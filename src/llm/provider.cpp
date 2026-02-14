@@ -2,6 +2,7 @@
 
 #include "llm/anthropic.hpp"
 #include "llm/openai.hpp"
+#include "llm/qwen.hpp"
 
 namespace agent::llm {
 
@@ -32,6 +33,10 @@ std::shared_ptr<Provider> ProviderFactory::create(const std::string& name, const
     // Register OpenAI provider
     instance().register_provider("openai", [](const ProviderConfig& cfg, asio::io_context& ctx) {
       return std::make_shared<OpenAIProvider>(cfg, ctx);
+    });
+    // Register Qwen provider
+    instance().register_provider("qwen", [](const ProviderConfig& cfg, asio::io_context& ctx) {
+      return std::make_shared<QwenProvider>(cfg, ctx);
     });
   }
 

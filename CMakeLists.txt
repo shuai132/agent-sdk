@@ -100,6 +100,8 @@ add_library(${AGENT_SDK_NAME}
         src/llm/provider.cpp
         src/llm/anthropic.cpp
         src/llm/openai.cpp
+        src/llm/qwen.cpp
+        src/llm/qwen_oauth.cpp
 
         # Tool system
         src/tool/registry.cpp
@@ -164,6 +166,9 @@ if (AGENT_BUILD_EXAMPLES)
 
     add_executable(${AGENT_SDK_NAME}_tool_test examples/tool_test.cpp)
     target_link_libraries(${AGENT_SDK_NAME}_tool_test PRIVATE ${AGENT_SDK_NAME})
+
+    add_executable(${AGENT_SDK_NAME}_qwen_oauth_example examples/qwen_oauth_example.cpp)
+    target_link_libraries(${AGENT_SDK_NAME}_qwen_oauth_example PRIVATE ${AGENT_SDK_NAME})
 endif ()
 
 # CLI TUI application
@@ -212,6 +217,7 @@ if (AGENT_BUILD_TESTS)
             tests/test_net.cpp
             tests/test_agent_cli.cpp
             tests/test_history_logic.cpp
+            tests/test_qwen_integration.cpp
             # TUI components for CLI tests
             tui/tui_components.cpp
     )
