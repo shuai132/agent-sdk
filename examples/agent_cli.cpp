@@ -25,6 +25,7 @@
 #include <thread>
 
 #include "agent/agent.hpp"
+#include "core/version.hpp"
 #include "tui_components.hpp"
 
 using namespace agent;
@@ -750,7 +751,7 @@ int main(int argc, char* argv[]) {
 
       auto session_list = vbox(reflected_items)  //
                           | vscroll_indicator    //
-                          | yframe              //
+                          | yframe               //
                           | flex;
 
       auto panel_header = hbox({
@@ -999,7 +1000,8 @@ int main(int argc, char* argv[]) {
   });
 
   // ----- 欢迎消息 -----
-  g_chat_log.push({EntryKind::SystemInfo, "agent_cli — Type a message to start. /help for commands. PageUp/Down to scroll.", ""});
+  g_chat_log.push(
+      {EntryKind::SystemInfo, std::string("agent_cli ") + AGENT_SDK_VERSION_STRING + " — Type a message to start. /help for commands.", ""});
 
   // ----- 运行 TUI -----
   screen.Loop(component);

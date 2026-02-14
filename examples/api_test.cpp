@@ -9,7 +9,7 @@
 using namespace agent;
 
 int main() {
-  std::cout << "Agent C++ - API Test\n";
+  std::cout << "agent-sdk - API Test\n";
   std::cout << "====================\n\n";
 
   // Initialize agent framework (registers providers)

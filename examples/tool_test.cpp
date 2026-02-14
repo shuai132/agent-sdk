@@ -15,7 +15,7 @@ using namespace agent;
 int main() {
   // spdlog::set_level(spdlog::level::debug);  // Uncomment for debugging
 
-  std::cout << "Agent C++ - Tool Call Test\n";
+  std::cout << "agent-sdk - Tool Call Test\n";
   std::cout << "===========================\n\n";
 
   // Initialize agent framework

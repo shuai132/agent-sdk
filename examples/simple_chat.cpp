@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "agent/agent.hpp"
+#include "core/version.hpp"
 #include "spdlog/cfg/env.h"
 
 using namespace agent;
@@ -317,7 +318,7 @@ static bool handle_sessions_command(const std::string& arg, asio::io_context& io
 }
 
 int main(int argc, char* argv[]) {
-  std::cout << "Agent C++ - Simple Chat Example\n";
+  std::cout << "agent-sdk " << AGENT_SDK_VERSION_STRING << " - Simple Chat Example\n";
   std::cout << "================================\n\n";
 
   // Log
