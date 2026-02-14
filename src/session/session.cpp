@@ -31,12 +31,13 @@ std::string to_string(SessionState state) {
   return "unknown";
 }
 
-Session::Session(asio::io_context &io_ctx, const Config &config, AgentType agent_type)
+Session::Session(asio::io_context &io_ctx, const Config &config, AgentType agent_type, std::shared_ptr<MessageStore> store)
     : io_ctx_(io_ctx),
       config_(config),
       agent_config_(config.get_or_create_agent(agent_type)),
       id_(UUID::generate()),
-      abort_signal_(std::make_shared<std::atomic<bool>>(false)) {
+      abort_signal_(std::make_shared<std::atomic<bool>>(false)),
+      store_(std::move(store)) {
   // Create provider
   auto provider_name = "anthropic";  // Default to Anthropic
   auto provider_config = config.get_provider(provider_name);
@@ -50,8 +51,8 @@ Session::~Session() {
   cancel();
 }
 
-std::shared_ptr<Session> Session::create(asio::io_context &io_ctx, const Config &config, AgentType agent_type) {
-  auto session = std::shared_ptr<Session>(new Session(io_ctx, config, agent_type));
+std::shared_ptr<Session> Session::create(asio::io_context &io_ctx, const Config &config, AgentType agent_type, std::shared_ptr<MessageStore> store) {
+  auto session = std::shared_ptr<Session>(new Session(io_ctx, config, agent_type, std::move(store)));
 
   Bus::instance().publish(events::SessionCreated{session->id()});
 
@@ -59,9 +60,10 @@ std::shared_ptr<Session> Session::create(asio::io_context &io_ctx, const Config 
 }
 
 std::shared_ptr<Session> Session::create_child(AgentType agent_type) {
-  auto child = std::shared_ptr<Session>(new Session(io_ctx_, config_, agent_type));
+  auto child = std::shared_ptr<Session>(new Session(io_ctx_, config_, agent_type, store_));
   child->parent_id_ = id_;
   children_.push_back(child);
+
   return child;
 }
 
@@ -69,10 +71,27 @@ void Session::add_message(Message msg) {
   msg.set_session_id(id_);
   messages_.push_back(std::move(msg));
 
-  Bus::instance().publish(events::MessageAdded{id_, messages_.back().id()});
+  const auto &added = messages_.back();
+
+  // Persist to store
+  if (store_) {
+    store_->save(added);
+  }
+
+  // Auto-generate title from first user message
+  if (title_.empty() && added.role() == Role::User) {
+    auto text = added.text();
+    if (text.size() > 50) {
+      text = text.substr(0, 50) + "...";
+    }
+    title_ = text;
+    sync_to_store();
+  }
+
+  Bus::instance().publish(events::MessageAdded{id_, added.id()});
 
   if (on_message_) {
-    on_message_(messages_.back());
+    on_message_(added);
   }
 }
 
@@ -204,6 +223,9 @@ void Session::run_loop() {
 
   // Prune old outputs
   prune_old_outputs();
+
+  // Sync final usage to store
+  sync_to_store();
 
   if (on_complete_) {
     on_complete_(FinishReason::Stop);
@@ -471,8 +493,12 @@ void Session::prune_old_outputs() {
   int64_t accumulated = 0;
   int64_t pruned = 0;
 
+  // Track messages that were modified for store sync
+  std::vector<const Message *> modified_messages;
+
   // Scan from newest to oldest
   for (auto it = messages_.rbegin(); it != messages_.rend(); ++it) {
+    bool modified = false;
     for (auto &part : it->parts()) {
       if (auto *tr = std::get_if<ToolResultPart>(&part)) {
         int64_t part_tokens = tr->output.size() / 4;
@@ -488,8 +514,19 @@ void Session::prune_old_outputs() {
           tr->compacted_at = std::chrono::system_clock::now();
           tr->output = "[Old tool result content cleared]";
           pruned += part_tokens;
+          modified = true;
         }
       }
+    }
+    if (modified) {
+      modified_messages.push_back(&(*it));
+    }
+  }
+
+  // Sync modified messages to store
+  if (store_ && !modified_messages.empty()) {
+    for (const auto *msg : modified_messages) {
+      store_->update(*msg);
     }
   }
 
@@ -515,6 +552,66 @@ bool Session::detect_doom_loop(const std::string &tool_name, const json &args) {
   }
 
   return matches >= 3;
+}
+
+std::shared_ptr<Session> Session::resume(asio::io_context &io_ctx, const Config &config, const SessionId &session_id,
+                                         std::shared_ptr<JsonMessageStore> store) {
+  if (!store) {
+    spdlog::warn("Cannot resume session without a store");
+    return nullptr;
+  }
+
+  // Load session metadata
+  auto meta = store->get_session(session_id);
+  if (!meta) {
+    spdlog::warn("Session {} not found in store", session_id);
+    return nullptr;
+  }
+
+  auto session = std::shared_ptr<Session>(new Session(io_ctx, config, meta->agent_type, store));
+
+  // Override the generated id with the stored one
+  session->id_ = session_id;
+  session->title_ = meta->title;
+  session->parent_id_ = meta->parent_id;
+  session->total_usage_ = meta->total_usage;
+
+  // Load messages from store
+  session->messages_ = store->list(session_id);
+
+  spdlog::info("Resumed session {} with {} messages", session_id, session->messages_.size());
+
+  Bus::instance().publish(events::SessionCreated{session->id()});
+
+  return session;
+}
+
+void Session::sync_to_store() {
+  auto *json_store = dynamic_cast<JsonMessageStore *>(store_.get());
+  if (!json_store) {
+    return;
+  }
+
+  // Don't persist empty sessions (no messages yet)
+  if (messages_.empty()) {
+    return;
+  }
+
+  SessionMeta meta;
+  meta.id = id_;
+  meta.title = title_;
+  meta.parent_id = parent_id_;
+  meta.agent_type = agent_config_.type;
+  meta.updated_at = std::chrono::system_clock::now();
+  meta.total_usage = total_usage_;
+
+  // Preserve original created_at if session already exists
+  auto existing = json_store->get_session(id_);
+  if (existing) {
+    meta.created_at = existing->created_at;
+  }
+
+  json_store->save_session(meta);
 }
 
 }  // namespace agent

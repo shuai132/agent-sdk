@@ -50,6 +50,7 @@ add_library(agent_core
         src/core/types.cpp
         src/core/message.cpp
         src/core/config.cpp
+        src/core/json_store.cpp
         src/core/uuid.cpp
 
         # Event bus
@@ -145,6 +146,7 @@ if (AGENT_BUILD_TESTS)
             tests/test_tool.cpp
             tests/test_session.cpp
             tests/test_llm.cpp
+            tests/test_json_store.cpp
     )
 
     target_link_libraries(agent_tests PRIVATE

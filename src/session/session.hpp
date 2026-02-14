@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/config.hpp"
+#include "core/json_store.hpp"
 #include "core/message.hpp"
 #include "core/types.hpp"
 #include "llm/provider.hpp"
@@ -24,7 +25,12 @@ std::string to_string(SessionState state);
 class Session : public std::enable_shared_from_this<Session> {
  public:
   // Factory method
-  static std::shared_ptr<Session> create(asio::io_context &io_ctx, const Config &config, AgentType agent_type = AgentType::Build);
+  static std::shared_ptr<Session> create(asio::io_context &io_ctx, const Config &config, AgentType agent_type = AgentType::Build,
+                                         std::shared_ptr<MessageStore> store = nullptr);
+
+  // Resume a session from persistent store
+  static std::shared_ptr<Session> resume(asio::io_context &io_ctx, const Config &config, const SessionId &session_id,
+                                         std::shared_ptr<JsonMessageStore> store);
 
   // Create child session (for Task tool)
   std::shared_ptr<Session> create_child(AgentType agent_type);
@@ -38,6 +44,16 @@ class Session : public std::enable_shared_from_this<Session> {
 
   const std::optional<SessionId> &parent_id() const {
     return parent_id_;
+  }
+
+  // Title (auto-generated from first user message if not set)
+  const std::string &title() const {
+    return title_;
+  }
+
+  void set_title(const std::string &title) {
+    title_ = title;
+    sync_to_store();
   }
 
   // State management
@@ -118,7 +134,7 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
  private:
-  Session(asio::io_context &io_ctx, const Config &config, AgentType agent_type);
+  Session(asio::io_context &io_ctx, const Config &config, AgentType agent_type, std::shared_ptr<MessageStore> store);
 
   // The main agent loop
   void run_loop();
@@ -139,12 +155,16 @@ class Session : public std::enable_shared_from_this<Session> {
   // Doom loop detection
   bool detect_doom_loop(const std::string &tool_name, const json &args);
 
+  // Sync session metadata to persistent store
+  void sync_to_store();
+
   asio::io_context &io_ctx_;
   Config config_;
   AgentConfig agent_config_;
 
   SessionId id_;
   std::optional<SessionId> parent_id_;
+  std::string title_;
 
   std::atomic<SessionState> state_{SessionState::Idle};
   std::shared_ptr<std::atomic<bool>> abort_signal_;
@@ -153,6 +173,7 @@ class Session : public std::enable_shared_from_this<Session> {
   TokenUsage total_usage_;
 
   std::shared_ptr<llm::Provider> provider_;
+  std::shared_ptr<MessageStore> store_;  // Persistent storage (optional)
 
   // Callbacks
   OnMessageCallback on_message_;
