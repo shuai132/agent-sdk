@@ -397,13 +397,23 @@ void Session::execute_tool_calls() {
             result_msg.add_tool_result(tc->id, tc->name, 
                 truncated.content, result.is_error);
             
+            // Notify tool result callback
+            if (on_tool_result_) {
+                on_tool_result_(tc->name, truncated.content, result.is_error);
+            }
+            
             Bus::instance().publish(events::ToolCallCompleted{
                 id_, tc->id, tc->name, !result.is_error
             });
             
         } catch (const std::exception& e) {
-            result_msg.add_tool_result(tc->id, tc->name,
-                std::string("Error: ") + e.what(), true);
+            std::string error_msg = std::string("Error: ") + e.what();
+            result_msg.add_tool_result(tc->id, tc->name, error_msg, true);
+            
+            // Notify tool result callback
+            if (on_tool_result_) {
+                on_tool_result_(tc->name, error_msg, true);
+            }
             
             Bus::instance().publish(events::ToolCallCompleted{
                 id_, tc->id, tc->name, false

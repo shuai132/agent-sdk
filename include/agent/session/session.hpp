@@ -76,12 +76,14 @@ public:
     using OnMessageCallback = std::function<void(const Message&)>;
     using OnStreamCallback = std::function<void(const std::string& text)>;
     using OnToolCallCallback = std::function<void(const std::string& tool, const json& args)>;
+    using OnToolResultCallback = std::function<void(const std::string& tool, const std::string& result, bool is_error)>;
     using OnCompleteCallback = std::function<void(FinishReason)>;
     using OnErrorCallback = std::function<void(const std::string& error)>;
     
     void on_message(OnMessageCallback cb) { on_message_ = std::move(cb); }
     void on_stream(OnStreamCallback cb) { on_stream_ = std::move(cb); }
     void on_tool_call(OnToolCallCallback cb) { on_tool_call_ = std::move(cb); }
+    void on_tool_result(OnToolResultCallback cb) { on_tool_result_ = std::move(cb); }
     void on_complete(OnCompleteCallback cb) { on_complete_ = std::move(cb); }
     void on_error(OnErrorCallback cb) { on_error_ = std::move(cb); }
     
@@ -128,6 +130,7 @@ private:
     OnMessageCallback on_message_;
     OnStreamCallback on_stream_;
     OnToolCallCallback on_tool_call_;
+    OnToolResultCallback on_tool_result_;
     OnCompleteCallback on_complete_;
     OnErrorCallback on_error_;
     PermissionHandler permission_handler_;
