@@ -1,4 +1,5 @@
 #include "agent/tool/builtin/builtins.hpp"
+#include "agent/session/session.hpp"
 
 #include <array>
 #include <cstdio>
@@ -583,17 +584,58 @@ std::vector<ParameterSchema> TaskTool::parameters() const {
 }
 
 std::future<ToolResult> TaskTool::execute(const json& args, const ToolContext& ctx) {
-    // This would be handled by the session to create a child session
-    return std::async(std::launch::async, [args]() -> ToolResult {
+    return std::async(std::launch::async, [args, ctx]() -> ToolResult {
         std::string prompt = args.value("prompt", "");
         std::string description = args.value("description", "");
-        std::string agent_type = args.value("subagent_type", "general");
+        std::string agent_type_str = args.value("subagent_type", "general");
         
-        // In a real implementation, this would create a child session
-        // and return the result. For now, return a placeholder.
+        // Check if we have the child session creation callback
+        if (!ctx.create_child_session) {
+            return ToolResult::error("Task tool requires a session context to create child sessions");
+        }
         
+        // Map agent type string to enum
+        AgentType agent_type = AgentType::General;  // default
+        if (agent_type_str == "explore") {
+            agent_type = AgentType::Explore;
+        } else if (agent_type_str == "general") {
+            agent_type = AgentType::General;
+        }
+        
+        // Create child session
+        auto child_session = ctx.create_child_session(agent_type);
+        if (!child_session) {
+            return ToolResult::error("Failed to create child session");
+        }
+        
+        // Collect the response
+        std::string response_text;
+        std::promise<void> completion_promise;
+        auto completion_future = completion_promise.get_future();
+        
+        // Set up callbacks to capture the response
+        child_session->on_stream([&response_text](const std::string& text) {
+            response_text += text;
+        });
+        
+        child_session->on_complete([&completion_promise](FinishReason reason) {
+            completion_promise.set_value();
+        });
+        
+        child_session->on_error([&response_text, &completion_promise](const std::string& error) {
+            response_text = "Error: " + error;
+            completion_promise.set_value();
+        });
+        
+        // Send the prompt to the child session
+        child_session->prompt(prompt);
+        
+        // Wait for completion
+        completion_future.wait();
+        
+        // Return the result
         return ToolResult::with_title(
-            "Task queued: " + description + "\nAgent type: " + agent_type + "\nPrompt: " + prompt,
+            response_text.empty() ? "Task completed with no output" : response_text,
             "Task: " + description
         );
     });

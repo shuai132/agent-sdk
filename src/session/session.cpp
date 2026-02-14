@@ -384,6 +384,12 @@ void Session::execute_tool_calls() {
         ctx.abort_signal = abort_signal_;
         ctx.ask_permission = permission_handler_;
         
+        // Provide child session creation callback for Task tool
+        auto self = shared_from_this();
+        ctx.create_child_session = [self](AgentType agent_type) {
+            return self->create_child(agent_type);
+        };
+        
         // Execute tool
         tc->started = true;
         

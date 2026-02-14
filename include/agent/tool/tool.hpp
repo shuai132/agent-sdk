@@ -16,6 +16,9 @@
 
 namespace agent {
 
+// Forward declaration
+class Session;
+
 // Tool execution context
 struct ToolContext {
     SessionId session_id;
@@ -30,6 +33,9 @@ struct ToolContext {
     
     // Progress callback
     std::function<void(const std::string& status)> on_progress;
+    
+    // Create child session callback (for Task tool)
+    std::function<std::shared_ptr<Session>(AgentType)> create_child_session;
 };
 
 // Tool execution result
