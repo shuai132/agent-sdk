@@ -48,6 +48,19 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+# FTXUI for TUI applications
+FetchContent_Declare(
+        ftxui
+        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+        GIT_TAG v5.0.0
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE
+)
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(ftxui)
+
 # OpenSSL for HTTPS
 find_package(OpenSSL REQUIRED)
 
@@ -135,6 +148,9 @@ if (AGENT_BUILD_EXAMPLES)
 
     add_executable(tool-test examples/tool_test.cpp)
     target_link_libraries(tool-test PRIVATE agent_core)
+
+    add_executable(agent_cli examples/agent_cli.cpp)
+    target_link_libraries(agent_cli PRIVATE agent_core ftxui::component)
 endif ()
 
 # Tests
@@ -165,6 +181,7 @@ if (AGENT_BUILD_TESTS)
             tests/test_permission.cpp
             tests/test_builtin_tools.cpp
             tests/test_net.cpp
+            tests/test_agent_cli.cpp
     )
 
     target_link_libraries(agent_tests PRIVATE

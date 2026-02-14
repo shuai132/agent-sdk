@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "agent/agent.hpp"
+#include "spdlog/cfg/env.h"
 
 using namespace agent;
 
@@ -318,6 +319,9 @@ static bool handle_sessions_command(const std::string& arg, asio::io_context& io
 int main(int argc, char* argv[]) {
   std::cout << "Agent C++ - Simple Chat Example\n";
   std::cout << "================================\n\n";
+
+  // Log
+  spdlog::cfg::load_env_levels();
 
   // Load configuration
   Config config = Config::load_default();
