@@ -75,6 +75,7 @@ int main(int argc, char* argv[]) {
   AppState state;
   state.agent_state.set_model(config.default_model);
   state.agent_state.set_session_id(session->id());
+  state.agent_state.update_context(session->estimated_context_tokens(), session->context_window());
 
   // 加载历史记录
   auto history_file = config_paths::config_dir() / "input_history.json";

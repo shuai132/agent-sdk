@@ -81,6 +81,7 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   int64_t estimated_context_tokens() const;
+  int64_t context_window() const;  // 返回模型的上下文窗口大小
 
   // Agent config
   const AgentConfig& agent_config() const {

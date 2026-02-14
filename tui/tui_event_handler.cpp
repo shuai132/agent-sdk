@@ -235,6 +235,7 @@ void handle_submit(AppState& state, AppContext& ctx, ScreenInteractive& screen) 
     session->prompt(user_msg);
     auto usage = session->total_usage();
     state.agent_state.update_tokens(usage.input_tokens, usage.output_tokens);
+    state.agent_state.update_context(session->estimated_context_tokens(), session->context_window());
     state.agent_state.set_running(false);
     refresh_fn();
   }).detach();
@@ -295,6 +296,7 @@ void handle_sessions_command(AppState& state, AppContext& ctx, const std::string
         setup_tui_callbacks(state, ctx);
         auto usage = ctx.session->total_usage();
         state.agent_state.update_tokens(usage.input_tokens, usage.output_tokens);
+        state.agent_state.update_context(ctx.session->estimated_context_tokens(), ctx.session->context_window());
         state.clear_all();
         std::string title = meta.title.empty() ? "(untitled)" : meta.title;
         state.chat_log.push({EntryKind::SystemInfo, "Loaded session: " + title, ""});
@@ -361,6 +363,7 @@ bool handle_sessions_panel_event(AppState& state, AppContext& ctx, Event event) 
         setup_tui_callbacks(state, ctx);
         auto usage = ctx.session->total_usage();
         state.agent_state.update_tokens(usage.input_tokens, usage.output_tokens);
+        state.agent_state.update_context(ctx.session->estimated_context_tokens(), ctx.session->context_window());
         state.clear_all();
         std::string title = meta.title.empty() ? "(untitled)" : meta.title;
         state.chat_log.push({EntryKind::SystemInfo, "Loaded session: " + title, ""});

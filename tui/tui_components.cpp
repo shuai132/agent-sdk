@@ -280,6 +280,27 @@ int64_t AgentState::output_tokens() const {
   return output_tokens_.load();
 }
 
+void AgentState::update_context(int64_t used, int64_t limit) {
+  context_used_.store(used);
+  if (limit > 0) {
+    context_limit_.store(limit);
+  }
+}
+
+int64_t AgentState::context_used() const {
+  return context_used_.load();
+}
+
+int64_t AgentState::context_limit() const {
+  return context_limit_.load();
+}
+
+float AgentState::context_ratio() const {
+  int64_t limit = context_limit_.load();
+  if (limit <= 0) return 0.0f;
+  return static_cast<float>(context_used_.load()) / static_cast<float>(limit);
+}
+
 void AgentState::set_activity(const std::string& msg) {
   std::lock_guard<std::mutex> lock(mu_);
   activity_ = msg;

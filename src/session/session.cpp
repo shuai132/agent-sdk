@@ -174,6 +174,11 @@ int64_t Session::estimated_context_tokens() const {
   return total;
 }
 
+int64_t Session::context_window() const {
+  auto model_info = provider_ ? provider_->get_model(agent_config_.model) : std::nullopt;
+  return model_info ? model_info->context_window : 128000;  // 默认 128k
+}
+
 void Session::prompt(const std::string& text) {
   prompt(Message::user(text));
 }

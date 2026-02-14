@@ -265,12 +265,27 @@ Element build_chat_view(AppState& state) {
 // ============================================================
 
 Element build_status_bar(const AppState& state) {
+  // 计算 context 使用占比
+  float ratio = state.agent_state.context_ratio();
+  int percent = static_cast<int>(ratio * 100);
+  std::string context_str = std::to_string(percent) + "%";
+
+  // 根据占比选择颜色：<50% 绿色，50-80% 黄色，>80% 红色
+  Color context_color = Color::Green;
+  if (ratio >= 0.8f) {
+    context_color = Color::Red;
+  } else if (ratio >= 0.5f) {
+    context_color = Color::Yellow;
+  }
+
   return hbox({
       text(" " + std::filesystem::current_path().filename().string() + " ") | bold | color(Color::White) | bgcolor(Color::Blue),
       text(" "),
       text(state.agent_state.model()) | dim,
       filler(),
       text(format_tokens(state.agent_state.input_tokens()) + "↑ " + format_tokens(state.agent_state.output_tokens()) + "↓") | dim,
+      text("  "),
+      text("ctx:" + context_str) | color(context_color),
       text(" "),
       text(state.agent_state.is_running() ? " ● Running " : " ● Ready ") | color(Color::White) |
           bgcolor(state.agent_state.is_running() ? Color::Yellow : Color::Green),
@@ -455,8 +470,7 @@ Element build_question_panel(AppState& state) {
           input_display = "Type your answer here...";
         }
         auto input_line = hbox({
-            text("      A: ") | dim,
-            text(input_display) | (state.question_input_text.empty() ? dim : nothing) | underlined,
+            text("      A: ") | dim, text(input_display) | (state.question_input_text.empty() ? dim : nothing) | underlined,
             text("▌") | blink | color(Color::Cyan),  // 光标
         });
         question_items.push_back(input_line);

@@ -165,6 +165,11 @@ class AgentState {
   int64_t input_tokens() const;
   int64_t output_tokens() const;
 
+  void update_context(int64_t used, int64_t limit);
+  int64_t context_used() const;
+  int64_t context_limit() const;
+  float context_ratio() const;  // 返回 0.0~1.0 之间的占比
+
   void set_activity(const std::string& msg);
   std::string activity() const;
 
@@ -178,6 +183,8 @@ class AgentState {
   std::atomic<bool> running_{false};
   std::atomic<int64_t> input_tokens_{0};
   std::atomic<int64_t> output_tokens_{0};
+  std::atomic<int64_t> context_used_{0};
+  std::atomic<int64_t> context_limit_{128000};  // 默认 128k
   std::atomic<int> mode_{static_cast<int>(AgentMode::Build)};
   mutable std::mutex mu_;
   std::string model_;
