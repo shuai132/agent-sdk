@@ -199,6 +199,8 @@ void Session::cancel() {
 }
 
 void Session::run_loop() {
+  // Reset abort signal for new run
+  abort_signal_->store(false);
   state_ = SessionState::Running;
 
   int step = 0;
@@ -473,11 +475,14 @@ void Session::execute_tool_calls() {
       // Truncate if needed
       auto truncated = Truncate::save_and_truncate(result.output, tc->name);
 
-      result_msg.add_tool_result(tc->id, tc->name, truncated.content, result.is_error);
+      // Sanitize invalid UTF-8 bytes to prevent JSON serialization errors
+      auto safe_content = sanitize_utf8(truncated.content);
+
+      result_msg.add_tool_result(tc->id, tc->name, safe_content, result.is_error);
 
       // Notify tool result callback
       if (on_tool_result_) {
-        on_tool_result_(tc->name, truncated.content, result.is_error);
+        on_tool_result_(tc->name, safe_content, result.is_error);
       }
 
       Bus::instance().publish(events::ToolCallCompleted{id_, tc->id, tc->name, !result.is_error});

@@ -106,6 +106,9 @@ std::string to_string(AgentType type);
 
 AgentType agent_type_from_string(const std::string &str);
 
+// Sanitize invalid UTF-8 bytes in a string (replace with U+FFFD)
+std::string sanitize_utf8(const std::string &input);
+
 // Model info
 struct ModelInfo {
   std::string id;

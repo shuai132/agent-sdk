@@ -4,84 +4,9 @@
 #include <fstream>
 #include <sstream>
 
+#include "core/types.hpp"
+
 namespace agent {
-
-// Sanitize a string to ensure it contains only valid UTF-8 sequences.
-// Invalid bytes are replaced with the Unicode replacement character (U+FFFD).
-static std::string sanitize_utf8(const std::string &input) {
-  std::string output;
-  output.reserve(input.size());
-
-  size_t i = 0;
-  while (i < input.size()) {
-    unsigned char c = static_cast<unsigned char>(input[i]);
-
-    if (c <= 0x7F) {
-      // ASCII byte
-      output.push_back(static_cast<char>(c));
-      i++;
-    } else if ((c & 0xE0) == 0xC0) {
-      // 2-byte sequence
-      if (i + 1 < input.size() && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80) {
-        // Validate overlong encoding: the codepoint must be >= 0x80
-        uint32_t cp = ((c & 0x1F) << 6) | (static_cast<unsigned char>(input[i + 1]) & 0x3F);
-        if (cp >= 0x80) {
-          output.push_back(input[i]);
-          output.push_back(input[i + 1]);
-        } else {
-          output.append("\xEF\xBF\xBD");  // U+FFFD
-        }
-        i += 2;
-      } else {
-        output.append("\xEF\xBF\xBD");  // U+FFFD
-        i++;
-      }
-    } else if ((c & 0xF0) == 0xE0) {
-      // 3-byte sequence
-      if (i + 2 < input.size() && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80 &&
-          (static_cast<unsigned char>(input[i + 2]) & 0xC0) == 0x80) {
-        uint32_t cp =
-            ((c & 0x0F) << 12) | ((static_cast<unsigned char>(input[i + 1]) & 0x3F) << 6) | (static_cast<unsigned char>(input[i + 2]) & 0x3F);
-        if (cp >= 0x800 && (cp < 0xD800 || cp > 0xDFFF)) {
-          output.push_back(input[i]);
-          output.push_back(input[i + 1]);
-          output.push_back(input[i + 2]);
-        } else {
-          output.append("\xEF\xBF\xBD");  // U+FFFD
-        }
-        i += 3;
-      } else {
-        output.append("\xEF\xBF\xBD");  // U+FFFD
-        i++;
-      }
-    } else if ((c & 0xF8) == 0xF0) {
-      // 4-byte sequence
-      if (i + 3 < input.size() && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80 &&
-          (static_cast<unsigned char>(input[i + 2]) & 0xC0) == 0x80 && (static_cast<unsigned char>(input[i + 3]) & 0xC0) == 0x80) {
-        uint32_t cp = ((c & 0x07) << 18) | ((static_cast<unsigned char>(input[i + 1]) & 0x3F) << 12) |
-                      ((static_cast<unsigned char>(input[i + 2]) & 0x3F) << 6) | (static_cast<unsigned char>(input[i + 3]) & 0x3F);
-        if (cp >= 0x10000 && cp <= 0x10FFFF) {
-          output.push_back(input[i]);
-          output.push_back(input[i + 1]);
-          output.push_back(input[i + 2]);
-          output.push_back(input[i + 3]);
-        } else {
-          output.append("\xEF\xBF\xBD");  // U+FFFD
-        }
-        i += 4;
-      } else {
-        output.append("\xEF\xBF\xBD");  // U+FFFD
-        i++;
-      }
-    } else {
-      // Invalid leading byte
-      output.append("\xEF\xBF\xBD");  // U+FFFD
-      i++;
-    }
-  }
-
-  return output;
-}
 
 namespace fs = std::filesystem;
 

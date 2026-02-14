@@ -163,7 +163,6 @@ if (AGENT_BUILD_TESTS)
     target_link_libraries(agent_tests PRIVATE
             agent_core
             GTest::gtest
-            GTest::gtest_main
     )
 
     include(GoogleTest)

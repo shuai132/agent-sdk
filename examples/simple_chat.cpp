@@ -1,4 +1,7 @@
+#include <unistd.h>
+
 #include <asio.hpp>
+#include <csignal>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -6,6 +9,38 @@
 #include "agent/agent.hpp"
 
 using namespace agent;
+
+// Global session pointer for signal handler
+static std::shared_ptr<Session> g_session;
+static std::atomic<bool> g_running{false};        // true when agent is processing
+static std::atomic<int64_t> g_last_sigint_ms{0};  // timestamp of last idle Ctrl+C
+
+static int64_t now_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// write() is async-signal-safe, so we can use it in signal handler
+static void signal_write(const char* msg) {
+  ::write(STDOUT_FILENO, msg, strlen(msg));
+}
+
+static void sigint_handler(int) {
+  if (g_running.load() && g_session) {
+    g_session->cancel();
+    signal_write("\n[Interrupted]\n\n> ");
+  } else {
+    auto now = now_ms();
+    auto last = g_last_sigint_ms.load();
+    if (last > 0 && (now - last) < 2000) {
+      // Double Ctrl+C within 2s — exit
+      signal_write("\n");
+      std::signal(SIGINT, SIG_DFL);
+      std::raise(SIGINT);
+    }
+    g_last_sigint_ms.store(now);
+    signal_write("\nPress Ctrl+C again or /q to exit.\n\n> ");
+  }
+}
 
 // Helper: set up session callbacks
 static void setup_callbacks(std::shared_ptr<Session>& session) {
@@ -185,6 +220,7 @@ static void handle_delete_command(const std::string& arg, asio::io_context& io_c
   if (is_current) {
     session->cancel();
     session = Session::create(io_ctx, config, AgentType::Build, store);
+    g_session = session;
     setup_callbacks(session);
     std::cout << "[Started new session]\n";
   }
@@ -225,6 +261,7 @@ static bool handle_sessions_command(const std::string& arg, asio::io_context& io
     auto resumed = Session::resume(io_ctx, config, meta.id, store);
     if (resumed) {
       session = resumed;
+      g_session = session;
       setup_callbacks(session);
       std::cout << "\n[Loaded session: " << meta.title << "]\n";
       std::cout << "[Messages: " << session->messages().size() << "]\n";
@@ -266,6 +303,7 @@ static bool handle_sessions_command(const std::string& arg, asio::io_context& io
   auto resumed = Session::resume(io_ctx, config, meta.id, store);
   if (resumed) {
     session = resumed;
+    g_session = session;
     setup_callbacks(session);
     std::cout << "\n[Loaded session: " << meta.title << "]\n";
     std::cout << "[Messages: " << session->messages().size() << "]\n";
@@ -343,9 +381,13 @@ int main(int argc, char* argv[]) {
 
   // Create session with persistent store
   auto session = Session::create(io_ctx, config, AgentType::Build, store);
+  g_session = session;
 
   // Set up callbacks
   setup_callbacks(session);
+
+  // Install SIGINT handler
+  std::signal(SIGINT, sigint_handler);
 
   // Run IO context in background thread
   std::thread io_thread([&io_ctx]() {
@@ -361,6 +403,18 @@ int main(int argc, char* argv[]) {
   while (true) {
     std::cout << "> ";
     std::getline(std::cin, input);
+
+    // Handle cin interrupted by signal
+    if (std::cin.fail()) {
+      std::cin.clear();
+      input.clear();
+      continue;
+    }
+
+    // Handle EOF (e.g. Ctrl+D)
+    if (std::cin.eof()) {
+      break;
+    }
 
     if (input == "/quit" || input == "/q") {
       break;
@@ -389,8 +443,18 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "\nAssistant: ";
+    g_running.store(true);
     session->prompt(input);
-    std::cout << "\n\n";
+    g_running.store(false);
+
+    if (session->state() == SessionState::Cancelled) {
+      // Signal handler already printed [Interrupted] and prompt
+      if (std::cin.fail()) {
+        std::cin.clear();
+      }
+    } else {
+      std::cout << "\n\n";
+    }
   }
 
   // Cleanup — session is auto-saved via store on every add_message
