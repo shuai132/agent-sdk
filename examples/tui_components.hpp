@@ -187,6 +187,8 @@ enum class CommandType {
   Help,      // /h, /help
   Sessions,  // /s, /sessions
   Compact,   // /compact
+  Expand,    // /expand — 展开所有工具调用
+  Collapse,  // /collapse — 折叠所有工具调用
   Unknown,   // 无法识别的 / 命令
 };
 
@@ -199,9 +201,13 @@ struct CommandDef {
 
 inline const std::vector<CommandDef>& command_defs() {
   static const std::vector<CommandDef> defs = {
-      {"/quit", "/q", "退出程序", CommandType::Quit},       {"/clear", "", "清空聊天记录", CommandType::Clear},
-      {"/help", "/h", "显示帮助信息", CommandType::Help},   {"/sessions", "/s", "管理会话", CommandType::Sessions},
+      {"/quit", "/q", "退出程序", CommandType::Quit},
+      {"/clear", "", "清空聊天记录", CommandType::Clear},
+      {"/help", "/h", "显示帮助信息", CommandType::Help},
+      {"/sessions", "/s", "管理会话", CommandType::Sessions},
       {"/compact", "", "压缩上下文", CommandType::Compact},
+      {"/expand", "", "展开所有工具调用", CommandType::Expand},
+      {"/collapse", "", "折叠所有工具调用", CommandType::Collapse},
   };
   return defs;
 }
@@ -240,6 +246,8 @@ inline ParsedCommand parse_command(const std::string& input) {
   if (cmd == "/h" || cmd == "/help") return {CommandType::Help, arg};
   if (cmd == "/s" || cmd == "/sessions") return {CommandType::Sessions, arg};
   if (cmd == "/compact") return {CommandType::Compact, arg};
+  if (cmd == "/expand") return {CommandType::Expand, arg};
+  if (cmd == "/collapse") return {CommandType::Collapse, arg};
 
   return {CommandType::Unknown, cmd};
 }

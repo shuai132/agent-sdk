@@ -7,9 +7,11 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <asio.hpp>
 #include <chrono>
 #include <csignal>
+#include <filesystem>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/loop.hpp>
@@ -83,7 +85,7 @@ static void setup_tui_callbacks(std::shared_ptr<Session>& session, std::function
 }
 
 // ============================================================
-// 渲染 DOM 元素（纯显示用，不可交互）
+// 渲染 DOM 元素（纯显示用）
 // ============================================================
 
 static Element render_text_entry(const ChatEntry& entry) {
@@ -135,86 +137,82 @@ static Element render_text_entry(const ChatEntry& entry) {
 }
 
 // ============================================================
-// 可点击展开/折叠的工具调用组件
+// 工具调用：折叠/展开的渲染
 // ============================================================
 
-// 一组 ToolCall + ToolResult 配对
 struct ToolGroup {
   ChatEntry call;
-  ChatEntry result;  // kind == SystemInfo 如果还没有结果
+  ChatEntry result;
   bool has_result = false;
 };
 
-static Component make_tool_component(ToolGroup group, std::shared_ptr<bool> expanded) {
-  return Renderer([group, expanded](bool focused) {
-           bool is_expanded = *expanded;
-           bool is_error = group.has_result && group.result.text.find("✗") != std::string::npos;
-           bool is_running = !group.has_result;
+static Element render_tool_group(const ToolGroup& group, bool expanded) {
+  bool is_error = group.has_result && group.result.text.find("✗") != std::string::npos;
+  bool is_running = !group.has_result;
 
-           // 状态图标
-           std::string status_icon = is_running ? "⏳" : (is_error ? "✗" : "✓");
-           Color status_color = is_running ? Color::Yellow : (is_error ? Color::Red : Color::Green);
-           std::string arrow = is_expanded ? "▼ " : "▶ ";
+  std::string status_icon = is_running ? "⏳" : (is_error ? "✗" : "✓");
+  Color status_color = is_running ? Color::Yellow : (is_error ? Color::Red : Color::Green);
+  std::string arrow = expanded ? "▼ " : "▶ ";
 
-           // 头部行
-           auto header = hbox({
-               text("    "),
-               text(arrow) | color(Color::Yellow),
-               text(status_icon + " ") | color(status_color),
-               text(group.call.text) | bold | color(Color::Yellow),
-               text(is_running ? "  running..." : "") | dim,
-           });
+  // 生成摘要：从参数或结果中提取一行简短描述
+  std::string summary;
+  if (!expanded) {
+    if (group.has_result) {
+      // 优先用结果的第一行
+      auto first_line = group.result.detail.substr(0, group.result.detail.find('\n'));
+      summary = truncate_text(first_line, 80);
+    } else if (!group.call.detail.empty()) {
+      // 用参数的第一行
+      auto first_line = group.call.detail.substr(0, group.call.detail.find('\n'));
+      summary = truncate_text(first_line, 80);
+    }
+  }
 
-           if (focused) {
-             header = header | bgcolor(Color::GrayDark);
-           }
+  auto header = hbox({
+      text("    "),
+      text(arrow) | color(Color::Yellow),
+      text(status_icon + " ") | color(status_color),
+      text(group.call.text) | bold | color(Color::Yellow),
+      text(is_running ? "  running..." : "") | dim,
+      text(summary.empty() ? "" : "  " + summary) | dim,
+  });
 
-           if (!is_expanded) {
-             return header;
-           }
+  if (!expanded) {
+    return header;
+  }
 
-           // 展开内容：参数
-           auto args_lines = split_lines(group.call.detail);
-           Elements args_elems;
-           for (size_t i = 0; i < args_lines.size() && i < 20; ++i) {
-             args_elems.push_back(text(args_lines[i]));
-           }
-           if (args_lines.size() > 20) {
-             args_elems.push_back(text("...(" + std::to_string(args_lines.size()) + " lines)") | dim);
-           }
+  // 展开内容
+  Elements expanded_parts;
+  expanded_parts.push_back(header);
 
-           Elements expanded_parts;
-           expanded_parts.push_back(header);
+  // 参数
+  auto args_lines = split_lines(group.call.detail);
+  Elements args_elems;
+  for (size_t i = 0; i < args_lines.size() && i < 20; ++i) {
+    args_elems.push_back(text(args_lines[i]));
+  }
+  if (args_lines.size() > 20) {
+    args_elems.push_back(text("...(" + std::to_string(args_lines.size()) + " lines)") | dim);
+  }
+  expanded_parts.push_back(hbox({text("      "), vbox({text("Arguments:") | bold | dim, vbox(args_elems) | dim}) | flex | borderLight}) | flex);
 
-           // 参数区域
-           expanded_parts.push_back(hbox({text("      "), vbox({text("Arguments:") | bold | dim, vbox(args_elems) | dim}) | flex | borderLight}) |
-                                    flex);
+  // 结果
+  if (group.has_result) {
+    auto result_lines = split_lines(group.result.detail);
+    Elements result_elems;
+    for (size_t i = 0; i < result_lines.size() && i < 30; ++i) {
+      result_elems.push_back(text(result_lines[i]));
+    }
+    if (result_lines.size() > 30) {
+      result_elems.push_back(text("...(" + std::to_string(result_lines.size()) + " lines total)") | dim);
+    }
+    expanded_parts.push_back(
+        hbox({text("      "),
+              vbox({text(is_error ? "Error:" : "Result:") | bold | dim | color(status_color), vbox(result_elems) | dim}) | flex | borderLight}) |
+        flex);
+  }
 
-           // 结果区域
-           if (group.has_result) {
-             auto result_lines = split_lines(group.result.detail);
-             Elements result_elems;
-             for (size_t i = 0; i < result_lines.size() && i < 30; ++i) {
-               result_elems.push_back(text(result_lines[i]));
-             }
-             if (result_lines.size() > 30) {
-               result_elems.push_back(text("...(" + std::to_string(result_lines.size()) + " lines total)") | dim);
-             }
-             expanded_parts.push_back(
-                 hbox({text("      "), vbox({text(is_error ? "Error:" : "Result:") | bold | dim | color(status_color), vbox(result_elems) | dim}) |
-                                           flex | borderLight}) |
-                 flex);
-           }
-
-           return vbox(expanded_parts);
-         }) |
-         CatchEvent([expanded](Event event) {
-           if (event == Event::Return || (event.is_mouse() && event.mouse().button == Mouse::Left && event.mouse().motion == Mouse::Pressed)) {
-             *expanded = !*expanded;
-             return true;
-           }
-           return false;
-         });
+  return vbox(expanded_parts);
 }
 
 // ============================================================
@@ -261,7 +259,6 @@ int main(int argc, char* argv[]) {
   auto session = Session::create(io_ctx, config, AgentType::Build, store);
   g_agent_state.set_session_id(session->id());
 
-  // IO 线程
   std::thread io_thread([&io_ctx]() {
     auto work = asio::make_work_guard(io_ctx);
     io_ctx.run();
@@ -280,16 +277,28 @@ int main(int argc, char* argv[]) {
   int cmd_menu_selected = 0;
   bool show_cmd_menu = false;
 
-  // 聊天区域的组件列表和展开状态追踪
-  // 由于 entries 在后台线程中更新，我们在渲染时动态重建组件树
-  struct ToolExpandState {
-    std::shared_ptr<bool> expanded;
-  };
-  std::map<size_t, ToolExpandState> tool_expand_states;  // key = ToolCall entry index
+  // 滚动控制
+  float scroll_y = 1.0f;          // 0.0=顶部, 1.0=底部
+  bool auto_scroll = true;        // 新消息自动滚到底，用户上滚后暂停
+  size_t last_snapshot_size = 0;  // 检测内容变化以触发自动滚动
+
+  // Ctrl+C 两次退出
+  bool ctrl_c_pending = false;
+  std::chrono::steady_clock::time_point ctrl_c_time;
+
+  // 工具调用展开状态 (key = ToolCall 在 snapshot 中的 index)
+  // 鼠标追踪已禁用（支持终端文本选择），工具调用默认展开
+  std::map<size_t, bool> tool_expanded;
 
   // ----- 输入组件 -----
   auto input_option = InputOption();
   input_option.multiline = false;
+  input_option.transform = [](InputState state) {
+    if (state.is_placeholder) {
+      state.element |= dim | color(Color::GrayDark);
+    }
+    return state.element;
+  };
   input_option.on_change = [&] {
     if (!input_text.empty() && input_text[0] == '/') {
       auto matches = match_commands(input_text);
@@ -299,7 +308,9 @@ int main(int argc, char* argv[]) {
       show_cmd_menu = false;
     }
   };
-  input_option.on_enter = [&] {
+
+  // 提交处理函数：命令解析 + 消息发送
+  auto handle_submit = [&] {
     if (show_cmd_menu) {
       auto matches = match_commands(input_text);
       if (!matches.empty() && cmd_menu_selected < static_cast<int>(matches.size())) {
@@ -320,7 +331,10 @@ int main(int argc, char* argv[]) {
       case CommandType::Clear:
         g_chat_log.clear();
         g_tool_panel.clear();
-        tool_expand_states.clear();
+        tool_expanded.clear();
+        scroll_y = 1.0f;
+        auto_scroll = true;
+        last_snapshot_size = 0;
         input_text.clear();
         return;
       case CommandType::Help: {
@@ -331,12 +345,31 @@ int main(int argc, char* argv[]) {
           help_text += " — " + def.description;
         }
         help_text += "\n  Esc — Interrupt running agent";
+        help_text += "\n  Ctrl+C — Press twice to exit";
+        help_text += "\n\nScroll: PageUp/PageDown, Mouse wheel";
+        help_text += "\nTool calls: Collapsed by default. Use /expand or /collapse to toggle.";
         g_chat_log.push({EntryKind::SystemInfo, help_text, ""});
         input_text.clear();
         return;
       }
       case CommandType::Compact:
         g_chat_log.push({EntryKind::SystemInfo, "Context compaction triggered", ""});
+        input_text.clear();
+        return;
+      case CommandType::Expand:
+        for (auto& [k, v] : tool_expanded) v = true;
+        for (size_t i = 0; i < g_chat_log.size(); ++i) {
+          tool_expanded[i] = true;
+        }
+        g_chat_log.push({EntryKind::SystemInfo, "All tool calls expanded", ""});
+        input_text.clear();
+        return;
+      case CommandType::Collapse:
+        for (auto& [k, v] : tool_expanded) v = false;
+        for (size_t i = 0; i < g_chat_log.size(); ++i) {
+          tool_expanded[i] = false;
+        }
+        g_chat_log.push({EntryKind::SystemInfo, "All tool calls collapsed", ""});
         input_text.clear();
         return;
       case CommandType::Unknown:
@@ -357,6 +390,8 @@ int main(int argc, char* argv[]) {
 
     g_chat_log.push({EntryKind::UserMsg, user_msg, ""});
     g_agent_state.set_running(true);
+    auto_scroll = true;
+    scroll_y = 1.0f;
 
     std::thread([&session, user_msg, refresh_fn]() {
       session->prompt(user_msg);
@@ -366,92 +401,90 @@ int main(int argc, char* argv[]) {
       refresh_fn();
     }).detach();
   };
+
+  // on_enter 直接调用 handle_submit
+  input_option.on_enter = handle_submit;
   auto input_component = Input(&input_text, "Message agent_cli...", input_option);
 
-  // ----- 主渲染器 -----
-  // 用 Container::Vertical 来承载所有可交互的条目组件，
-  // 这样滚轮和焦点跟随都由 FTXUI 自动处理
-  auto chat_container = Container::Vertical({});
-
-  // 追踪上一次的 entry 数量，增量更新组件
-  size_t last_entry_count = 0;
-
-  auto main_container = Container::Vertical({
-      chat_container,
-      input_component,
+  // 包装输入组件：加上 prompt 前缀，保持光标位置正确
+  auto input_with_prompt = Renderer(input_component, [&] {
+    auto prompt_char = g_agent_state.is_running() ? "..." : "❯";
+    return hbox({
+        text(" " + std::string(prompt_char) + " ") | bold | color(Color::Cyan),
+        input_component->Render() | flex,
+    });
   });
 
-  auto renderer = Renderer(main_container, [&] {
+  // ----- 主渲染器 -----
+  // input_with_prompt 是唯一的可聚焦组件，负责接收所有键盘事件
+  // chat 区域通过渲染函数生成，不参与焦点管理
+  auto final_renderer = Renderer(input_with_prompt, [&] {
     auto entries = g_chat_log.snapshot();
 
-    // ========== 增量构建聊天组件 ==========
-    if (entries.size() != last_entry_count) {
-      // 重建组件树
-      chat_container->DetachAllChildren();
+    // 检测内容变化，自动滚动到底部
+    size_t current_size = entries.size();
+    // 简单检测：entry 数量变了，或者最后一条 entry 的文本长度变了（流式追加）
+    bool content_changed = (current_size != last_snapshot_size);
+    if (!content_changed && !entries.empty() && entries.back().kind == EntryKind::AssistantText) {
+      // 流式追加时 entry 数量不变但内容变了——每帧都触发
+      content_changed = true;
+    }
+    last_snapshot_size = current_size;
 
-      for (size_t i = 0; i < entries.size(); ++i) {
-        const auto& e = entries[i];
-
-        if (e.kind == EntryKind::ToolCall) {
-          // 查找配对的 ToolResult
-          ToolGroup group;
-          group.call = e;
-          if (i + 1 < entries.size() && entries[i + 1].kind == EntryKind::ToolResult) {
-            group.result = entries[i + 1];
-            group.has_result = true;
-          }
-
-          // 获取或创建展开状态
-          if (tool_expand_states.find(i) == tool_expand_states.end()) {
-            tool_expand_states[i] = {std::make_shared<bool>(false)};
-          }
-
-          auto comp = make_tool_component(group, tool_expand_states[i].expanded);
-          chat_container->Add(comp);
-          continue;
-        }
-
-        // 跳过已配对的 ToolResult（已合并到 ToolCall 组件中）
-        if (e.kind == EntryKind::ToolResult && i > 0 && entries[i - 1].kind == EntryKind::ToolCall) {
-          continue;
-        }
-
-        // 普通条目：包装为 Renderer 组件
-        auto entry_copy = e;
-        chat_container->Add(Renderer([entry_copy] {
-          return render_text_entry(entry_copy);
-        }));
-      }
-
-      // 新消息时滚动到底部：将焦点设到最后一个子组件
-      if (!chat_container->ChildCount()) {
-        // 空
-      }
-
-      last_entry_count = entries.size();
+    if (auto_scroll && content_changed) {
+      scroll_y = 1.0f;
     }
 
-    // Agent 运行动画
-    Element spinner_elem = text("");
+    // ========== 构建聊天内容 DOM ==========
+    Elements chat_elements;
+    chat_elements.push_back(text(""));
+
+    for (size_t i = 0; i < entries.size(); ++i) {
+      const auto& e = entries[i];
+
+      if (e.kind == EntryKind::ToolCall) {
+        // 构建 ToolGroup
+        ToolGroup group;
+        group.call = e;
+        if (i + 1 < entries.size() && entries[i + 1].kind == EntryKind::ToolResult) {
+          group.result = entries[i + 1];
+          group.has_result = true;
+        }
+
+        // 工具调用默认折叠，用 /expand 展开
+        bool expanded = tool_expanded.count(i) && tool_expanded[i];
+        chat_elements.push_back(render_tool_group(group, expanded));
+        continue;
+      }
+
+      // 跳过已配对的 ToolResult
+      if (e.kind == EntryKind::ToolResult && i > 0 && entries[i - 1].kind == EntryKind::ToolCall) {
+        continue;
+      }
+
+      chat_elements.push_back(render_text_entry(e));
+    }
+
+    // spinner
     if (g_agent_state.is_running()) {
-      spinner_elem = hbox({
+      chat_elements.push_back(hbox({
           text("    "),
           spinner(18, entries.size()) | color(Color::Cyan),
           text("  ") | dim,
-      });
+      }));
     }
 
-    // 聊天视图
-    auto chat_view = vbox({
-                         chat_container->Render(),
-                         spinner_elem,
-                         text(""),
-                     }) |
-                     vscroll_indicator | yframe | flex;
+    chat_elements.push_back(text(""));
+
+    auto chat_view = vbox(chat_elements)                     //
+                     | focusPositionRelative(0.f, scroll_y)  //
+                     | vscroll_indicator                     //
+                     | yframe                                //
+                     | flex;
 
     // ========== 状态栏 ==========
     auto status_bar = hbox({
-        text(" agent_cli ") | bold | color(Color::White) | bgcolor(Color::Blue),
+        text(" " + std::filesystem::current_path().filename().string() + " ") | bold | color(Color::White) | bgcolor(Color::Blue),
         text(" "),
         text(g_agent_state.model()) | dim,
         filler(),
@@ -459,13 +492,6 @@ int main(int argc, char* argv[]) {
         text(" "),
         text(g_agent_state.is_running() ? " ● Running " : " ● Ready ") | color(Color::White) |
             bgcolor(g_agent_state.is_running() ? Color::Yellow : Color::Green),
-    });
-
-    // ========== 输入区域 ==========
-    auto prompt_char = g_agent_state.is_running() ? "..." : "❯";
-    auto input_area = hbox({
-        text(" " + std::string(prompt_char) + " ") | bold | color(Color::Cyan),
-        input_component->Render() | flex,
     });
 
     // ========== 命令提示菜单 ==========
@@ -494,19 +520,34 @@ int main(int argc, char* argv[]) {
     }
 
     // ========== 最终布局 ==========
+    // 底部输入区域：固定高度，让输入框视觉上居中
+    auto input_area = vbox({
+                          cmd_menu_element,
+                          text(""),
+                          text(""),
+                          separator() | dim,
+                          text(""),
+                          input_with_prompt->Render(),
+                          text(""),
+                      }) |
+                      size(HEIGHT, EQUAL, 7);
+
     return vbox({
         status_bar,
         separator() | dim,
         chat_view | flex,
-        separator() | dim,
-        cmd_menu_element,
         input_area,
     });
   });
 
   // ----- 事件处理 -----
-  auto component = CatchEvent(renderer, [&](Event event) {
-    // Esc: 中断 agent 或关闭菜单
+  auto component = CatchEvent(final_renderer, [&](Event event) {
+    // 任何非 Ctrl+C 的按键都重置 ctrl_c_pending
+    if (event != Event::Special("\x03")) {
+      ctrl_c_pending = false;
+    }
+
+    // Esc: 终止当前任务，或关闭菜单
     if (event == Event::Escape) {
       if (g_agent_state.is_running()) {
         session->cancel();
@@ -518,18 +559,33 @@ int main(int argc, char* argv[]) {
         show_cmd_menu = false;
         return true;
       }
-      return false;
+      return true;
     }
 
-    // Ctrl+C
+    // Ctrl+C: 第一次提示，2 秒内再按退出
     if (event == Event::Special("\x03")) {
       if (g_agent_state.is_running()) {
         session->cancel();
         g_agent_state.set_running(false);
         g_chat_log.push({EntryKind::SystemInfo, "Interrupted", ""});
+        ctrl_c_pending = false;
         return true;
       }
-      return false;
+      auto now = std::chrono::steady_clock::now();
+      if (ctrl_c_pending && (now - ctrl_c_time) < std::chrono::seconds(2)) {
+        screen.Exit();
+        return true;
+      }
+      ctrl_c_pending = true;
+      ctrl_c_time = now;
+      g_chat_log.push({EntryKind::SystemInfo, "Press Ctrl+C again to exit", ""});
+      return true;
+    }
+
+    // Enter: 在 CatchEvent 层直接处理提交，确保命令不会被 Input 吞掉
+    if (event == Event::Return) {
+      handle_submit();
+      return true;
     }
 
     // 命令菜单导航
@@ -555,12 +611,44 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    // PageUp / PageDown / Home / End 由 Container::Vertical 自动处理
+    // ===== 鼠标滚轮 =====
+    if (event.is_mouse()) {
+      auto& m = event.mouse();
+      if (m.button == Mouse::WheelUp) {
+        scroll_y = std::max(0.0f, scroll_y - 0.05f);
+        auto_scroll = false;
+        return true;
+      }
+      if (m.button == Mouse::WheelDown) {
+        scroll_y = std::min(1.0f, scroll_y + 0.05f);
+        if (scroll_y >= 0.95f) {
+          scroll_y = 1.0f;
+          auto_scroll = true;
+        }
+        return true;
+      }
+    }
+
+    // ===== PageUp / PageDown =====
+    if (event == Event::PageUp) {
+      scroll_y = std::max(0.0f, scroll_y - 0.3f);
+      auto_scroll = false;
+      return true;
+    }
+    if (event == Event::PageDown) {
+      scroll_y = std::min(1.0f, scroll_y + 0.3f);
+      if (scroll_y >= 0.95f) {
+        scroll_y = 1.0f;
+        auto_scroll = true;
+      }
+      return true;
+    }
+
     return false;
   });
 
   // ----- 欢迎消息 -----
-  g_chat_log.push({EntryKind::SystemInfo, "agent_cli — Type a message to start. /help for commands.", ""});
+  g_chat_log.push({EntryKind::SystemInfo, "agent_cli — Type a message to start. /help for commands. PageUp/Down to scroll.", ""});
 
   // ----- 运行 TUI -----
   screen.Loop(component);

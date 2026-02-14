@@ -253,6 +253,16 @@ TEST(CommandTest, ParseCompact) {
   EXPECT_EQ(cmd.type, CommandType::Compact);
 }
 
+TEST(CommandTest, ParseExpand) {
+  auto cmd = parse_command("/expand");
+  EXPECT_EQ(cmd.type, CommandType::Expand);
+}
+
+TEST(CommandTest, ParseCollapse) {
+  auto cmd = parse_command("/collapse");
+  EXPECT_EQ(cmd.type, CommandType::Collapse);
+}
+
 TEST(CommandTest, ParseHelp) {
   auto cmd = parse_command("/h");
   EXPECT_EQ(cmd.type, CommandType::Help);
