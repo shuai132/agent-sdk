@@ -30,6 +30,9 @@ struct HttpOptions {
     std::chrono::seconds timeout{30};
 };
 
+// Streaming data callback
+using StreamDataCallback = std::function<void(const std::string& chunk)>;
+
 // Async HTTP client using ASIO
 class HttpClient {
 public:
@@ -47,6 +50,14 @@ public:
     std::future<HttpResponse> request(
         const std::string& url,
         const HttpOptions& options
+    );
+    
+    // Streaming request - calls on_data for each chunk received
+    void request_stream(
+        const std::string& url,
+        const HttpOptions& options,
+        StreamDataCallback on_data,
+        std::function<void(int status_code, const std::string& error)> on_complete
     );
     
     // Convenience methods

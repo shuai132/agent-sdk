@@ -160,8 +160,13 @@ void Session::run_loop() {
             }
         }
         
+        // Check if the last message is from user (needs response)
+        bool needs_response = !context_msgs.empty() && 
+                             context_msgs.back().role() == Role::User;
+        
         // Check exit condition - stop if assistant has finished without requesting tools
-        if (last_assistant && last_assistant->is_finished() && 
+        // AND there's no pending user message that needs a response
+        if (!needs_response && last_assistant && last_assistant->is_finished() && 
             last_assistant->finish_reason() != FinishReason::ToolCalls) {
             spdlog::debug("Session {} completed after {} steps", id_, step);
             break;
@@ -224,45 +229,121 @@ void Session::process_stream() {
         request.tools.push_back(tool);
     }
     
-    // Use non-streaming API for now (more compatible with API proxies)
-    auto future = provider_->complete(request);
-    auto response = future.get();
+    // Use streaming API for real-time output
+    std::promise<void> stream_complete;
+    auto stream_future = stream_complete.get_future();
     
-    if (!response.ok()) {
+    // Build message as we receive stream events
+    std::string accumulated_text;
+    TokenUsage usage;
+    FinishReason finish_reason = FinishReason::Stop;
+    std::optional<std::string> error_message;
+    
+    // Track tool calls being built
+    struct ToolCallBuilder {
+        std::string id;
+        std::string name;
+        std::string args_json;
+    };
+    std::vector<ToolCallBuilder> tool_call_builders;
+    
+    provider_->stream(
+        request,
+        [this, &accumulated_text, &usage, &finish_reason, &error_message, &tool_call_builders](const llm::StreamEvent& event) {
+            std::visit([this, &accumulated_text, &usage, &finish_reason, &error_message, &tool_call_builders](auto&& e) {
+                using T = std::decay_t<decltype(e)>;
+                
+                if constexpr (std::is_same_v<T, llm::TextDelta>) {
+                    // Stream text to callback immediately
+                    if (on_stream_) {
+                        on_stream_(e.text);
+                    }
+                    accumulated_text += e.text;
+                } else if constexpr (std::is_same_v<T, llm::ToolCallDelta>) {
+                    // Start tracking a new tool call
+                    tool_call_builders.push_back({e.id, e.name, e.arguments_delta});
+                } else if constexpr (std::is_same_v<T, llm::ToolCallComplete>) {
+                    // Tool call arguments completed
+                    // Find matching builder and update it with complete args
+                    bool found = false;
+                    for (auto& builder : tool_call_builders) {
+                        if (builder.id == e.id || (builder.id.empty() && !e.name.empty() && builder.name == e.name)) {
+                            // Update with complete info
+                            if (builder.id.empty()) builder.id = e.id;
+                            if (builder.name.empty()) builder.name = e.name;
+                            builder.args_json = e.arguments.dump();
+                            
+                            if (on_tool_call_) {
+                                on_tool_call_(builder.name, e.arguments);
+                            }
+                            Bus::instance().publish(events::ToolCallStarted{id_, builder.id, builder.name});
+                            found = true;
+                            break;
+                        }
+                    }
+                    // Handle case where we get ToolCallComplete without a prior ToolCallDelta
+                    if (!found && !e.id.empty()) {
+                        tool_call_builders.push_back({e.id, e.name, e.arguments.dump()});
+                        if (on_tool_call_) {
+                            on_tool_call_(e.name, e.arguments);
+                        }
+                        Bus::instance().publish(events::ToolCallStarted{id_, e.id, e.name});
+                    }
+                } else if constexpr (std::is_same_v<T, llm::FinishStep>) {
+                    finish_reason = e.reason;
+                    usage = e.usage;
+                } else if constexpr (std::is_same_v<T, llm::StreamError>) {
+                    error_message = e.message;
+                }
+            }, event);
+        },
+        [&stream_complete]() {
+            stream_complete.set_value();
+        }
+    );
+    
+    // Wait for stream to complete
+    stream_future.wait();
+    
+    // Check for errors
+    if (error_message) {
         if (on_error_) {
-            on_error_(response.error.value_or("Unknown error"));
+            on_error_(*error_message);
         }
         state_ = SessionState::Failed;
         return;
     }
     
-    // Stream text to callback if available
-    if (on_stream_) {
-        for (const auto& part : response.message.parts()) {
-            if (auto* text = std::get_if<TextPart>(&part)) {
-                on_stream_(text->text);
-            }
+    // Finalize message - build from accumulated data
+    Message msg(Role::Assistant, "");
+    
+    // Add accumulated text
+    if (!accumulated_text.empty()) {
+        msg.add_text(accumulated_text);
+    }
+    
+    // Add all tool calls
+    for (const auto& builder : tool_call_builders) {
+        try {
+            json args = json::parse(builder.args_json);
+            msg.add_tool_call(builder.id, builder.name, args);
+        } catch (...) {
+            // Skip invalid tool calls
         }
     }
     
-    // Notify tool calls
-    for (const auto& part : response.message.parts()) {
-        if (auto* tc = std::get_if<ToolCallPart>(&part)) {
-            if (on_tool_call_) {
-                on_tool_call_(tc->name, tc->arguments);
-            }
-            Bus::instance().publish(events::ToolCallStarted{id_, tc->id, tc->name});
-        }
-    }
+    msg.set_finished(true);
+    msg.set_finish_reason(finish_reason);
+    msg.set_usage(usage);
     
-    total_usage_ += response.usage;
+    total_usage_ += usage;
     
     Bus::instance().publish(events::TokensUsed{
-        id_, response.usage.input_tokens, response.usage.output_tokens
+        id_, usage.input_tokens, usage.output_tokens
     });
     
     // Add the completed message
-    add_message(std::move(response.message));
+    add_message(std::move(msg));
 }
 
 void Session::execute_tool_calls() {

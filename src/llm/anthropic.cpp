@@ -146,71 +146,60 @@ void AnthropicProvider::stream(
     // Reset state
     tool_call_args_.clear();
     
-    // Use SSE client for streaming
-    sse_client_ = std::make_unique<net::SseClient>(io_ctx_);
-    
-    // We need to POST the request body first, then stream the response
-    // For now, we'll use a workaround by POSTing and manually handling SSE
-    
     net::HttpOptions options;
     options.method = "POST";
     options.body = body.dump();
     options.headers = headers;
     
-    // For streaming, we need to handle the response differently
-    // This is a simplified implementation - a full implementation would
-    // need proper SSE parsing with the POST body
-    
     auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
     auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));
+    auto sse_buffer = std::make_shared<std::string>();
     
-    http_client_.request(
+    // Use streaming HTTP request for real-time SSE processing
+    http_client_.request_stream(
         base_url_ + "/v1/messages",
         options,
-        [this, shared_callback, shared_complete](net::HttpResponse response) {
-            if (!response.ok()) {
-                StreamError error;
-                error.message = "HTTP error: " + std::to_string(response.status_code);
-                if (!response.body.empty()) {
-                    // Try to extract error message from response
-                    try {
-                        auto err = json::parse(response.body);
-                        if (err.contains("error") && err["error"].contains("message")) {
-                            error.message = err["error"]["message"].get<std::string>();
-                        }
-                    } catch (...) {
-                        error.message += " - " + response.body.substr(0, 500);
-                    }
-                }
-                spdlog::error("API error: {}", error.message);
-                (*shared_callback)(error);
-                (*shared_complete)();
-                return;
-            }
+        [this, shared_callback, sse_buffer](const std::string& chunk) {
+            // Accumulate chunk into SSE buffer and parse complete events
+            *sse_buffer += chunk;
             
-            // Parse SSE events from response body
-            std::istringstream stream(response.body);
-            std::string line;
-            std::string event_data;
-            
-            while (std::getline(stream, line)) {
-                if (line.empty() || line == "\r") {
-                    if (!event_data.empty()) {
-                        parse_sse_event(event_data, *shared_callback);
-                        event_data.clear();
+            // Process complete SSE events (ended by \n\n or \r\n\r\n)
+            size_t pos;
+            while ((pos = sse_buffer->find("\n\n")) != std::string::npos ||
+                   (pos = sse_buffer->find("\r\n\r\n")) != std::string::npos) {
+                
+                std::string event_block = sse_buffer->substr(0, pos);
+                size_t skip = (sse_buffer->substr(pos, 4) == "\r\n\r\n") ? 4 : 2;
+                *sse_buffer = sse_buffer->substr(pos + skip);
+                
+                // Parse SSE event from block
+                std::istringstream stream(event_block);
+                std::string line;
+                std::string event_data;
+                
+                while (std::getline(stream, line)) {
+                    // Remove \r if present
+                    if (!line.empty() && line.back() == '\r') {
+                        line.pop_back();
                     }
-                    continue;
+                    
+                    if (line.starts_with("data: ")) {
+                        if (!event_data.empty()) event_data += "\n";
+                        event_data += line.substr(6);
+                    }
                 }
                 
-                if (line.starts_with("data: ")) {
-                    event_data = line.substr(6);
-                    // Remove trailing \r if present
-                    if (!event_data.empty() && event_data.back() == '\r') {
-                        event_data.pop_back();
-                    }
+                if (!event_data.empty()) {
+                    parse_sse_event(event_data, *shared_callback);
                 }
             }
-            
+        },
+        [shared_callback, shared_complete](int status_code, const std::string& error) {
+            if (!error.empty()) {
+                StreamError err;
+                err.message = error;
+                (*shared_callback)(err);
+            }
             (*shared_complete)();
         }
     );
