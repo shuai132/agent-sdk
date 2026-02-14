@@ -77,41 +77,54 @@ void load_history_to_chat_log(AppState& state, const std::shared_ptr<agent::Sess
   for (size_t i = static_cast<size_t>(start_index); i < msgs.size(); ++i) {
     const auto& msg = msgs[i];
 
+    // 跳过系统消息
     if (msg.role() == agent::Role::System) continue;
 
+    // 显示摘要消息
     if (msg.is_summary()) {
       state.chat_log.push({EntryKind::SystemInfo, "[Summary] " + msg.text(), ""});
       continue;
     }
 
+    // 处理用户消息
     if (msg.role() == agent::Role::User) {
       auto tool_results = msg.tool_results();
+      // 跳过纯工具结果消息（没有文本内容）
       if (!tool_results.empty() && msg.text().empty()) continue;
       if (!msg.text().empty()) {
         state.chat_log.push({EntryKind::UserMsg, msg.text(), ""});
       }
+      continue;  // 重要：处理完用户消息后继续下一条
     }
 
+    // 处理助手消息
     if (msg.role() == agent::Role::Assistant) {
+      // 添加文本内容
       if (!msg.text().empty()) {
         state.chat_log.push({EntryKind::AssistantText, msg.text(), ""});
       }
+
+      // 添加工具调用和结果
       auto tool_calls = msg.tool_calls();
       for (const auto* tc : tool_calls) {
         state.chat_log.push({EntryKind::ToolCall, tc->name, tc->arguments.dump(2)});
-        for (size_t j = i + 1; j < msgs.size(); ++j) {
+
+        // 查找对应的工具结果
+        bool found = false;
+        for (size_t j = i + 1; j < msgs.size() && !found; ++j) {
           auto results = msgs[j].tool_results();
           for (const auto* tr : results) {
             if (tr->tool_call_id == tc->id) {
               std::string summary = tr->output;
               if (summary.size() > 2000) summary = summary.substr(0, 2000) + "...";
               state.chat_log.push({EntryKind::ToolResult, tc->name + (tr->is_error ? " ✗" : " ✓"), summary});
-              goto found_result;
+              found = true;
+              break;
             }
           }
         }
-      found_result:;
       }
+      continue;  // 重要：处理完助手消息后继续下一条
     }
   }
 }
