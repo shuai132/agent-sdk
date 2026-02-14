@@ -1,5 +1,5 @@
 // Permission system stub
-#include "agent/tool/tool.hpp"
+#include "tool/tool.hpp"
 
 namespace agent {
 

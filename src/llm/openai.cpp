@@ -1,5 +1,5 @@
 // OpenAI provider stub
-#include "agent/llm/provider.hpp"
+#include "llm/provider.hpp"
 
 namespace agent::llm {
 

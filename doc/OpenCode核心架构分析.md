@@ -1,8 +1,9 @@
-# OpenCode 核心架构深度分析
+# OpenCode核心架构分析
 
 ## 1. Agent Loop（代理循环）
 
-OpenCode 的 agent loop 实现在 `packages/opencode/src/session/prompt.ts` 的 `SessionPrompt.loop()` 函数中，**核心循环并不是简单的 `while tool_calls`，而是一个更精密的状态机**。
+OpenCode 的 agent loop 实现在 `packages/opencode/src/session/prompt.ts` 的 `SessionPrompt.loop()` 函数中，*
+*核心循环并不是简单的 `while tool_calls`，而是一个更精密的状态机**。
 
 ### 主循环伪代码
 
@@ -57,34 +58,36 @@ SessionPrompt.loop(sessionID):
 
 ### 关键设计特点
 
-**循环不直接解析 tool_calls**，而是依赖 Vercel AI SDK 的 `streamText` 内部循环：`streamText` 本身会自动处理 `tool-calls` → 执行工具 → 将结果追加到对话 → 再次调用 LLM。`SessionProcessor.process()` 内部只有一层 `while(true)` 来处理流事件，每个 step 完成后外部循环重新检查消息状态决定是否继续。
+**循环不直接解析 tool_calls**，而是依赖 Vercel AI SDK 的 `streamText` 内部循环：`streamText` 本身会自动处理 `tool-calls` →
+执行工具 → 将结果追加到对话 → 再次调用 LLM。`SessionProcessor.process()` 内部只有一层 `while(true)` 来处理流事件，每个
+step 完成后外部循环重新检查消息状态决定是否继续。
 
 实际的工具执行流在 `processor.ts` 的 `process()` 方法中：
 
 ```ts
 // processor.ts - process() 方法
 while (true) {
-  const stream = await LLM.stream(streamInput)  // 调用 streamText
+    const stream = await LLM.stream(streamInput)  // 调用 streamText
 
-  for await (const value of stream.fullStream) {
-    switch (value.type) {
-      case "tool-call":     // 工具调用开始 → 检测 doom loop
-      case "tool-result":   // 工具返回结果 → 持久化
-      case "tool-error":    // 工具错误 → 检测权限拒绝
-      case "text-delta":    // 文本流 → 实时推送
-      case "finish-step":   // 一轮完成 → 计算 token 用量 → 检查是否需要 compaction
+    for await (const value of stream.fullStream) {
+        switch (value.type) {
+            case "tool-call":     // 工具调用开始 → 检测 doom loop
+            case "tool-result":   // 工具返回结果 → 持久化
+            case "tool-error":    // 工具错误 → 检测权限拒绝
+            case "text-delta":    // 文本流 → 实时推送
+            case "finish-step":   // 一轮完成 → 计算 token 用量 → 检查是否需要 compaction
+        }
+        if (needsCompaction) break
     }
-    if (needsCompaction) break
-  }
 
-  // 错误重试逻辑 (指数退避)
-  if (retryable_error) {
-    attempt++
-    await SessionRetry.sleep(delay, abort)
-    continue
-  }
+    // 错误重试逻辑 (指数退避)
+    if (retryable_error) {
+        attempt++
+        await SessionRetry.sleep(delay, abort)
+        continue
+    }
 
-  // 返回 "continue" | "stop" | "compact"
+    // 返回 "continue" | "stop" | "compact"
 }
 ```
 
@@ -96,28 +99,28 @@ while (true) {
 
 工具来源有 **三类**：
 
-| 来源 | 加载方式 | 示例 |
-|------|---------|------|
-| **内置工具** | 硬编码数组 | `BashTool`, `ReadTool`, `EditTool`, `GrepTool`, `TaskTool`, `SkillTool` |
-| **自定义工具** | 从 `{tool,tools}/*.{js,ts}` 动态导入 | 用户在 `.opencode/tool/` 目录下定义 |
-| **Plugin 工具** | 通过 `Plugin.list()` 注册 | 插件系统提供 |
+| 来源            | 加载方式                            | 示例                                                                      |
+|---------------|---------------------------------|-------------------------------------------------------------------------|
+| **内置工具**      | 硬编码数组                           | `BashTool`, `ReadTool`, `EditTool`, `GrepTool`, `TaskTool`, `SkillTool` |
+| **自定义工具**     | 从 `{tool,tools}/*.{js,ts}` 动态导入 | 用户在 `.opencode/tool/` 目录下定义                                             |
+| **Plugin 工具** | 通过 `Plugin.list()` 注册           | 插件系统提供                                                                  |
 
 ```ts
 // registry.ts
 async function all(): Promise<Tool.Info[]> {
-  return [
-    InvalidTool,          // 修复无效工具调用
-    QuestionTool,         // 向用户提问
-    BashTool,             // 执行 shell 命令
-    ReadTool, GlobTool, GrepTool,  // 文件操作
-    EditTool, WriteTool,  // 文件编辑
-    TaskTool,             // 子代理调度
-    SkillTool,            // 技能加载
-    WebSearchTool, WebFetchTool,   // 网络访问
-    CodeSearchTool,       // 代码搜索
-    ApplyPatchTool,       // GPT 系列专用 patch 格式
-    ...custom,            // 自定义 + 插件工具
-  ]
+    return [
+        InvalidTool,          // 修复无效工具调用
+        QuestionTool,         // 向用户提问
+        BashTool,             // 执行 shell 命令
+        ReadTool, GlobTool, GrepTool,  // 文件操作
+        EditTool, WriteTool,  // 文件编辑
+        TaskTool,             // 子代理调度
+        SkillTool,            // 技能加载
+        WebSearchTool, WebFetchTool,   // 网络访问
+        CodeSearchTool,       // 代码搜索
+        ApplyPatchTool,       // GPT 系列专用 patch 格式
+        ...custom,            // 自定义 + 插件工具
+    ]
 }
 ```
 
@@ -127,16 +130,17 @@ async function all(): Promise<Tool.Info[]> {
 
 ```ts
 interface Info {
-  id: string
-  init: (ctx?: InitContext) => Promise<{
-    description: string
-    parameters: ZodType         // Zod schema 自动转 JSON Schema
-    execute(args, ctx): Promise<{ title, metadata, output }>
-  }>
+    id: string
+    init: (ctx?: InitContext) => Promise<{
+        description: string
+        parameters: ZodType         // Zod schema 自动转 JSON Schema
+        execute(args, ctx): Promise<{ title, metadata, output }>
+    }>
 }
 ```
 
 **关键设计**：`Tool.define()` 工厂函数自动包装了：
+
 - **参数验证** → Zod parse
 - **输出截断** → `Truncate.output()` 超过 2000 行/50KB 自动保存全文到磁盘，返回截断版本 + 文件路径提示
 
@@ -144,7 +148,7 @@ interface Info {
 
 通过 `PermissionNext` 系统实现细粒度权限，每个 agent 有独立的权限规则集：
 
-```ts
+```
 // build agent: 大部分允许
 permission: { "*": "allow", question: "allow", ... }
 
@@ -161,10 +165,10 @@ permission: { "*": "deny", grep: "allow", glob: "allow", read: "allow", ... }
 
 ```ts
 if (lastThree.every(p =>
-  p.tool === value.toolName &&
-  JSON.stringify(p.state.input) === JSON.stringify(value.input)
+    p.tool === value.toolName &&
+    JSON.stringify(p.state.input) === JSON.stringify(value.input)
 )) {
-  await PermissionNext.ask({ permission: "doom_loop", ... })
+    await PermissionNext.ask({permission: "doom_loop", ...})
 }
 ```
 
@@ -192,19 +196,19 @@ MCP 工具在 `resolveTools()` 中与内置工具合并：
 // prompt.ts resolveTools()
 // 1. 加载内置工具
 for (const item of await ToolRegistry.tools(model, agent)) {
-  tools[item.id] = tool({ ... })
+    tools[item.id] = tool({...})
 }
 
 // 2. 加载 MCP 工具
 for (const [key, item] of Object.entries(await MCP.tools())) {
-  // MCP 工具执行前需要权限检查
-  item.execute = async (args, opts) => {
-    await ctx.ask({ permission: key, ... })        // 权限检查
-    const result = await execute(args, opts)        // 调用 MCP server
-    const truncated = await Truncate.output(...)    // 截断处理
-    return { output: truncated.content, ... }
-  }
-  tools[key] = item
+    // MCP 工具执行前需要权限检查
+    item.execute = async (args, opts) => {
+        await ctx.ask({permission: key, ...})        // 权限检查
+        const result = await execute(args, opts)        // 调用 MCP server
+        const truncated = await Truncate.output(...)    // 截断处理
+        return {output: truncated.content, ...}
+    }
+    tools[key] = item
 }
 ```
 
@@ -237,6 +241,7 @@ Skill 是**按需加载的领域知识包**，不是预加载到 system prompt �
 name: deploy-aws
 description: AWS deployment workflow with CDK
 ---
+
 具体的技能指令内容...
 ```
 
@@ -280,7 +285,7 @@ OpenCode 的 session 可能涉及**数十次甚至上百次**工具调用，toke
 
 ```ts
 // 超过 2000 行或 50KB → 保存全文到磁盘 → 返回截断版本
-Truncate.output(text, { maxLines: 2000, maxBytes: 50*1024 })
+Truncate.output(text, {maxLines: 2000, maxBytes: 50 * 1024})
 // → "...3000 lines truncated... Full output saved to: /path/to/tool_xxx"
 // → 提示 LLM 用 Grep/Read 或委托 explore agent 处理
 ```
@@ -290,11 +295,11 @@ Truncate.output(text, { maxLines: 2000, maxBytes: 50*1024 })
 **每次循环结束时**运行，清除旧工具输出：
 
 ```ts
-SessionCompaction.prune():
-  // 从最新消息向前扫描
-  // 保留最近 40,000 tokens 的工具输出
-  // 超过的标记为 compacted → "[Old tool result content cleared]"
-  // 保护 skill 工具输出不被清除
+SessionCompaction.prune();
+// 从最新消息向前扫描
+// 保留最近 40,000 tokens 的工具输出
+// 超过的标记为 compacted → "[Old tool result content cleared]"
+// 保护 skill 工具输出不被清除
 ```
 
 - `PRUNE_PROTECT = 40_000` tokens: 最近的工具输出保护区
@@ -329,19 +334,19 @@ filterCompacted() 过滤:
 
 ```ts
 async function filterCompacted(stream) {
-  const result = []
-  const completed = new Set()
-  for await (const msg of stream) {  // 从最新消息向前迭代
-    result.push(msg)
-    // 如果遇到 user 消息中有 compaction part，且对应 summary 已完成
-    if (msg.role === "user" && completed.has(msg.id) && hasCompactionPart)
-      break  // 截断！
-    // 记录已完成的 summary 对应的 parentID
-    if (msg.role === "assistant" && msg.summary && msg.finish)
-      completed.add(msg.parentID)
-  }
-  result.reverse()
-  return result  // 只返回 [compaction之后的消息]
+    const result = []
+    const completed = new Set()
+    for await (const msg of stream) {  // 从最新消息向前迭代
+        result.push(msg)
+        // 如果遇到 user 消息中有 compaction part，且对应 summary 已完成
+        if (msg.role === "user" && completed.has(msg.id) && hasCompactionPart)
+            break  // 截断！
+        // 记录已完成的 summary 对应的 parentID
+        if (msg.role === "assistant" && msg.summary && msg.finish)
+            completed.add(msg.parentID)
+    }
+    result.reverse()
+    return result  // 只返回 [compaction之后的消息]
 }
 ```
 
@@ -385,6 +390,7 @@ InstructionPrompt.resolve(messages, filepath, messageID)
 ### 用户消息中的文件附加
 
 用户可以通过 `@file.ts` 语法附加文件，系统自动：
+
 - 文本文件 → 调用 `ReadTool` 读取并截断
 - 目录 → 调用 `ListTool` 列出内容
 - MCP 资源 → 调用 `MCP.readResource()`
@@ -417,9 +423,9 @@ opencode 支持**在循环迭代之间排队子任务**：
 // prompt.ts loop() 中
 let tasks = []  // 收集 compaction 和 subtask parts
 for (let i = msgs.length - 1; i >= 0; i--) {
-  // 在未完成的 assistant 消息中查找 subtask part
-  const task = msg.parts.filter(p => p.type === "compaction" || p.type === "subtask")
-  if (!lastFinished) tasks.push(...task)
+    // 在未完成的 assistant 消息中查找 subtask part
+    const task = msg.parts.filter(p => p.type === "compaction" || p.type === "subtask")
+    if (!lastFinished) tasks.push(...task)
 }
 // tasks.pop() → 处理一个 pending subtask
 ```
@@ -439,9 +445,9 @@ OpenCode **没有传统意义上的"主动唤醒"（如定时触发 agent 自主
 ```ts
 // 目前只有一个注册：
 Scheduler.register({
-  id: "tool.truncation.cleanup",   // 清理 7 天前的截断文件
-  interval: HOUR_MS,               // 每小时运行
-  scope: "global",
+    id: "tool.truncation.cleanup",   // 清理 7 天前的截断文件
+    interval: HOUR_MS,               // 每小时运行
+    scope: "global",
 })
 ```
 
@@ -454,11 +460,11 @@ Scheduler.register({
 ```ts
 // compaction.ts process()
 if (result === "continue" && input.auto) {
-  // 自动注入 "Continue if you have next steps" 用户消息
-  await Session.updatePart({
-    text: "Continue if you have next steps",
-    synthetic: true,  // 标记为系统生成
-  })
+    // 自动注入 "Continue if you have next steps" 用户消息
+    await Session.updatePart({
+        text: "Continue if you have next steps",
+        synthetic: true,  // 标记为系统生成
+    })
 }
 ```
 
@@ -471,14 +477,14 @@ if (result === "continue" && input.auto) {
 ```ts
 // prompt.ts loop()
 if (step > 1 && lastFinished) {
-  // 用 <system-reminder> 包裹新消息
-  part.text = [
-    "<system-reminder>",
-    "The user sent the following message:",
-    part.text,
-    "Please address this message and continue with your tasks.",
-    "</system-reminder>",
-  ].join("\n")
+    // 用 <system-reminder> 包裹新消息
+    part.text = [
+        "<system-reminder>",
+        "The user sent the following message:",
+        part.text,
+        "Please address this message and continue with your tasks.",
+        "</system-reminder>",
+    ].join("\n")
 }
 ```
 
@@ -486,7 +492,7 @@ if (step > 1 && lastFinished) {
 
 ```ts
 client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
-  Bus.publish(ToolsChanged, { server: serverName })
+    Bus.publish(ToolsChanged, {server: serverName})
 })
 ```
 
@@ -497,11 +503,11 @@ client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
 ## 9. 总结架构图
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  SessionPrompt.loop()            │
-│  ┌────────────────────────────────────────────┐  │
-│  │  while true:                               │  │
-│  │    msgs = filterCompacted(stream)          │  │  ← 上下文过滤
+┌───────────────────────────────────────────────────┐
+│                  SessionPrompt.loop()             │
+│  ┌─────────────────────────────────────────────┐  │
+│  │  while true:                                │  │
+│  │    msgs = filterCompacted(stream)           │  │  ← 上下文过滤
 │  │    check subtask → TaskTool (child session) │  │  ← 子代理调度
 │  │    check compaction → summarize + continue  │  │  ← 上下文压缩
 │  │    check overflow → create compaction       │  │  ← 溢出检测
@@ -512,7 +518,7 @@ client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
 │  │      ├─ permission checks                   │  │
 │  │      └─ truncation                          │  │
 │  │    prune old tool outputs                   │  │  ← 裁剪
-│  └────────────────────────────────────────────┘  │
+│  └─────────────────────────────────────────────┘  │
 │                                                   │
 │  System Prompt = provider_prompt                  │
 │               + environment info                  │
@@ -523,7 +529,8 @@ client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
 │  Tools = ToolRegistry(builtin + custom + plugin)  │
 │        + MCP.tools()                              │
 │        + SkillTool (lazy-load skills)             │
-└─────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────┘
 ```
 
-这是一个非常工程化的 agent 实现：**没有长期向量记忆数据库，没有主动唤醒调度器**，而是通过**分层截断 + 裁剪 + 摘要压缩**来管理上下文窗口，通过**子 session + skill 按需加载**来实现知识扩展，通过**compaction 自动继续**来保持 agent 连续工作。
+这是一个非常工程化的 agent 实现：**没有长期向量记忆数据库，没有主动唤醒调度器**，而是通过**分层截断 + 裁剪 + 摘要压缩**
+来管理上下文窗口，通过**子 session + skill 按需加载**来实现知识扩展，通过**compaction 自动继续**来保持 agent 连续工作。
