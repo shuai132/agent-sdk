@@ -151,7 +151,7 @@ Model Context Protocol 客户端，支持：
 | [OpenSSL](https://www.openssl.org/)                | —      | HTTPS / TLS |
 | [GoogleTest](https://github.com/google/googletest) | 1.14.0 | 单元测试（可选）    |
 
-> 除 OpenSSL 需要系统安装外，其他依赖均通过 CMake `FetchContent` 自动拉取。
+> 除 OpenSSL 需要系统安装外，其他依赖均通过 git submodule 管理，位于 `thirdparty/` 目录。
 
 ## 构建
 
@@ -164,9 +164,12 @@ Model Context Protocol 客户端，支持：
 ### 编译步骤
 
 ```bash
-# 克隆项目
-git clone https://github.com/shuai132/agent-sdk.git
+# 克隆项目（包含子模块）
+git clone --recursive https://github.com/shuai132/agent-sdk.git
 cd agent-sdk
+
+# 如果已克隆但未拉取子模块
+git submodule update --init --recursive
 
 # 构建
 mkdir build && cd build

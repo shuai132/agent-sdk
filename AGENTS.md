@@ -19,7 +19,8 @@ cmake --build build --target agent_tests
 ```
 
 **前置条件**：CMake >= 3.20、支持 C++20 的编译器、系统安装的 OpenSSL。
-其余依赖（nlohmann/json、asio、spdlog、ftxui、googletest）通过 CMake FetchContent 自动拉取。
+其余依赖（nlohmann/json、asio、spdlog、ftxui、googletest）通过 git submodule 管理，位于 `thirdparty/` 目录。
+克隆项目后需要执行 `git submodule update --init --recursive` 来拉取依赖。
 
 ## 测试命令
 
@@ -164,4 +165,5 @@ tui/          # agent_cli TUI 应用（基于 FTXUI）
 
 ## 代码检索
 
-请忽略`build`、`cmake-build-*`等文件夹，这些是构建产物。
+- 请忽略`build`、`cmake-build-*`等文件夹，这些是构建产物。
+- `thirdparty`里都是三方库目录，不需要修改。

@@ -20,62 +20,30 @@ else ()
     option(AGENT_BUILD_CLI "Build agent_cli TUI application" OFF)
 endif ()
 
-# Dependencies
-include(FetchContent)
-set(FETCHCONTENT_QUIET OFF)
+# Third-party dependencies via git submodules
+set(THIRDPARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty)
 
 # nlohmann/json
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 set(JSON_Install OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.12.0
-        GIT_SHALLOW TRUE
-        GIT_PROGRESS TRUE
-)
-FetchContent_MakeAvailable(json)
+add_subdirectory(${THIRDPARTY_DIR}/json)
 
 # asio (standalone, header-only)
-FetchContent_Declare(
-        asio
-        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-        GIT_TAG asio-1-36-0
-        GIT_SHALLOW TRUE
-        GIT_PROGRESS TRUE
-)
-FetchContent_MakeAvailable(asio)
-
-# Create asio interface library
 add_library(asio INTERFACE)
-target_include_directories(asio INTERFACE ${asio_SOURCE_DIR}/asio/include)
+target_include_directories(asio INTERFACE ${THIRDPARTY_DIR}/asio/asio/include)
 target_compile_definitions(asio INTERFACE ASIO_STANDALONE)
 
 # spdlog for logging
 set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        spdlog
-        GIT_REPOSITORY https://github.com/gabime/spdlog.git
-        GIT_TAG v1.17.0
-        GIT_SHALLOW TRUE
-        GIT_PROGRESS TRUE
-)
-FetchContent_MakeAvailable(spdlog)
+add_subdirectory(${THIRDPARTY_DIR}/spdlog)
 
 # FTXUI for TUI applications
-FetchContent_Declare(
-        ftxui
-        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
-        GIT_TAG v6.1.9
-        GIT_SHALLOW TRUE
-        GIT_PROGRESS TRUE
-)
 set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(ftxui)
+add_subdirectory(${THIRDPARTY_DIR}/ftxui)
 
 # OpenSSL for HTTPS
 find_package(OpenSSL REQUIRED)
@@ -186,14 +154,7 @@ if (AGENT_BUILD_TESTS)
 
     set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-            googletest
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            GIT_TAG v1.14.0
-            GIT_SHALLOW TRUE
-            GIT_PROGRESS TRUE
-    )
-    FetchContent_MakeAvailable(googletest)
+    add_subdirectory(${THIRDPARTY_DIR}/googletest)
 
     add_executable(${AGENT_SDK_NAME}_tests
             tests/test_main.cpp

@@ -157,8 +157,8 @@ See [Skill System Design](doc/skill-system.md) for details.
 | [OpenSSL](https://www.openssl.org/)                | —       | HTTPS / TLS             |
 | [GoogleTest](https://github.com/google/googletest) | 1.14.0  | Unit testing (optional) |
 
-> Except for OpenSSL which requires system installation, all other dependencies are automatically fetched via CMake
-`FetchContent`.
+> Except for OpenSSL which requires system installation, all other dependencies are managed via git submodule in the
+`thirdparty/` directory.
 
 ## Building
 
@@ -171,9 +171,12 @@ See [Skill System Design](doc/skill-system.md) for details.
 ### Build Steps
 
 ```bash
-# Clone the project
-git clone https://github.com/shuai132/agent-sdk.git
+# Clone the project (with submodules)
+git clone --recursive https://github.com/shuai132/agent-sdk.git
 cd agent-sdk
+
+# If already cloned without submodules
+git submodule update --init --recursive
 
 # Build
 mkdir build && cd build
