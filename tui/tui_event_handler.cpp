@@ -531,8 +531,9 @@ bool handle_main_event(AppState& state, AppContext& ctx, ScreenInteractive& scre
     return true;
   }
 
-  // Ctrl+C: 两次退出
+  // Ctrl+C: 清空输入框 / 1秒内两次退出
   if (event == Event::Special("\x03")) {
+    // 如果 agent 正在运行，先中断
     if (state.agent_state.is_running()) {
       ctx.session->cancel();
       state.agent_state.set_running(false);
@@ -540,8 +541,21 @@ bool handle_main_event(AppState& state, AppContext& ctx, ScreenInteractive& scre
       state.ctrl_c_pending = false;
       return true;
     }
+
+    // 如果输入框非空，清空输入框并重置 ctrl_c 状态
+    if (!state.input_text.empty()) {
+      state.input_text.clear();
+      state.input_cursor_pos = 0;
+      state.show_cmd_menu = false;
+      state.show_file_path_menu = false;
+      state.file_path_matches.clear();
+      state.ctrl_c_pending = false;
+      return true;
+    }
+
+    // 输入框为空，检查是否 1 秒内再次按 Ctrl+C
     auto now = std::chrono::steady_clock::now();
-    if (state.ctrl_c_pending && (now - state.ctrl_c_time) < std::chrono::seconds(2)) {
+    if (state.ctrl_c_pending && (now - state.ctrl_c_time) < std::chrono::seconds(1)) {
       screen.Exit();
       return true;
     }

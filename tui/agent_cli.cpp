@@ -1,6 +1,11 @@
+#include <termios.h>
+#include <unistd.h>
+
 #include <asio.hpp>
+#include <chrono>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
+#include <ftxui/component/loop.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
@@ -175,8 +180,21 @@ int main(int argc, char* argv[]) {
   state.chat_log.push(
       {EntryKind::SystemInfo, std::string("agent_cli ") + AGENT_SDK_VERSION_STRING + " — Type a message to start. /help for commands.", ""});
 
-  // ===== 运行 TUI =====
-  screen.Loop(component);
+  // ===== 使用 Loop 手动控制循环 =====
+  Loop loop(&screen, component);
+
+  // 在 FTXUI 初始化终端后，禁用 ISIG 让 Ctrl+C 作为字符输入而非信号
+  {
+    struct termios term;
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag &= ~ISIG;  // 禁用信号生成（SIGINT, SIGQUIT, SIGTSTP）
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+  }
+
+  while (!loop.HasQuitted()) {
+    loop.RunOnce();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 
   // ===== 清理 =====
   ctx.session->cancel();
