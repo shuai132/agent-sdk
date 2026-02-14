@@ -253,7 +253,8 @@ int main() {
 
 ## TUI Terminal Interface (agent_cli)
 
-agent-sdk provides a full-featured TUI (Terminal User Interface) application `agent_cli`, built with [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
+agent-sdk provides a full-featured TUI (Terminal User Interface) application `agent_cli`, built
+with [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
 
 ### Running
 
@@ -281,34 +282,34 @@ export OPENAI_API_KEY="your-key"
 
 #### Keyboard Shortcuts
 
-| Shortcut       | Function                    |
-|----------------|-----------------------------|
-| `Tab`          | Switch Build/Plan mode      |
-| `Esc`          | Interrupt running agent     |
-| `Ctrl+C`       | Press twice to exit         |
-| `PageUp/Down`  | Scroll chat history         |
-| `↑/↓`          | Navigate command menu       |
+| Shortcut      | Function                |
+|---------------|-------------------------|
+| `Tab`         | Switch Build/Plan mode  |
+| `Esc`         | Interrupt running agent |
+| `Ctrl+C`      | Press twice to exit     |
+| `PageUp/Down` | Scroll chat history     |
+| `↑/↓`         | Navigate command menu   |
 
 #### Mouse Interactions
 
-| Action              | Function                           |
-|---------------------|------------------------------------|
-| Click tool card     | Expand/collapse tool call details  |
-| Scroll wheel        | Scroll chat history                |
-| Click session item  | Select session (in session panel)  |
+| Action             | Function                          |
+|--------------------|-----------------------------------|
+| Click tool card    | Expand/collapse tool call details |
+| Scroll wheel       | Scroll chat history               |
+| Click session item | Select session (in session panel) |
 
 #### Commands
 
-| Command         | Shortcut | Function                    |
-|-----------------|----------|-----------------------------|
-| `/quit`         | `/q`     | Exit program                |
-| `/clear`        | -        | Clear chat history          |
-| `/help`         | `/h`     | Show help                   |
-| `/sessions`     | `/s`     | Open session list panel     |
-| `/expand`       | -        | Expand all tool calls       |
-| `/collapse`     | -        | Collapse all tool calls     |
-| `/copy`         | `/c`     | Copy chat to clipboard      |
-| `/compact`      | -        | Trigger context compaction  |
+| Command     | Shortcut | Function                   |
+|-------------|----------|----------------------------|
+| `/quit`     | `/q`     | Exit program               |
+| `/clear`    | -        | Clear chat history         |
+| `/help`     | `/h`     | Show help                  |
+| `/sessions` | `/s`     | Open session list panel    |
+| `/expand`   | -        | Expand all tool calls      |
+| `/collapse` | -        | Collapse all tool calls    |
+| `/copy`     | `/c`     | Copy chat to clipboard     |
+| `/compact`  | -        | Trigger context compaction |
 
 ### Session Management
 
@@ -353,12 +354,12 @@ agent-sdk/
 
 - [x] TUI support
 - [x] Skill system
-- [ ] Session persistence
-- [ ] REST API for server mode
-- [ ] C++20 coroutine (`co_await`) interface
-- [ ] Full MCP client implementation
+- [x] Session persistence
+- [x] Full MCP client implementation
 - [ ] More LLM Providers (Gemini, local models, etc.)
 - [ ] Vision support (image input)
+- [ ] REST API for server mode
+- [ ] C++20 coroutine (`co_await`) interface
 
 ## Related Docs
 
