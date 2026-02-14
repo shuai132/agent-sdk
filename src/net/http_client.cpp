@@ -278,7 +278,13 @@ class HttpClient::Impl {
                              std::regex status_regex(R"(HTTP/[\d.]+ (\d+))");
                              std::smatch match;
                              if (std::regex_search(status_line, match, status_regex)) {
-                               response->status_code = std::stoi(match[1].str());
+                               try {
+                                 response->status_code = std::stoi(match[1].str());
+                               } catch (const std::exception &) {
+                                 response->error = "Invalid HTTP response: cannot parse status code";
+                                 callback(*response);
+                                 return;
+                               }
                              }
 
                              // Parse headers
@@ -314,11 +320,15 @@ class HttpClient::Impl {
     // Check if we have Content-Length and already have all data
     auto it = response->headers.find("Content-Length");
     if (it != response->headers.end()) {
-      size_t content_length = std::stoull(it->second);
-      if (response->body.size() >= content_length) {
-        // We have all the data
-        callback(*response);
-        return;
+      try {
+        size_t content_length = std::stoull(it->second);
+        if (response->body.size() >= content_length) {
+          // We have all the data
+          callback(*response);
+          return;
+        }
+      } catch (const std::exception &) {
+        // Invalid Content-Length, ignore and continue reading
       }
     }
 
@@ -350,10 +360,14 @@ class HttpClient::Impl {
                          // Check Content-Length again
                          auto it = response->headers.find("Content-Length");
                          if (it != response->headers.end()) {
-                           size_t content_length = std::stoull(it->second);
-                           if (response->body.size() >= content_length) {
-                             callback(*response);
-                             return;
+                           try {
+                             size_t content_length = std::stoull(it->second);
+                             if (response->body.size() >= content_length) {
+                               callback(*response);
+                               return;
+                             }
+                           } catch (const std::exception &) {
+                             // Invalid Content-Length, ignore and continue reading
                            }
                          }
                          read_body(socket, response, buffer, callback);
@@ -536,7 +550,12 @@ class HttpClient::Impl {
                              std::regex status_regex(R"(HTTP/[\d.]+ (\d+))");
                              std::smatch match;
                              if (std::regex_search(status_line, match, status_regex)) {
-                               *status_code = std::stoi(match[1].str());
+                               try {
+                                 *status_code = std::stoi(match[1].str());
+                               } catch (const std::exception &) {
+                                 (*on_complete)(0, "Invalid HTTP response: cannot parse status code");
+                                 return;
+                               }
                              }
 
                              // Skip headers
