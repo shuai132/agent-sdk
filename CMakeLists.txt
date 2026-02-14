@@ -126,6 +126,9 @@ if(AGENT_BUILD_EXAMPLES)
     
     add_executable(api-test examples/api_test.cpp)
     target_link_libraries(api-test PRIVATE agent-core)
+    
+    add_executable(tool-test examples/tool_test.cpp)
+    target_link_libraries(tool-test PRIVATE agent-core)
 endif()
 
 # Tests

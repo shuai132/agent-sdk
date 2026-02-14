@@ -171,6 +171,18 @@ void AnthropicProvider::stream(
             if (!response.ok()) {
                 StreamError error;
                 error.message = "HTTP error: " + std::to_string(response.status_code);
+                if (!response.body.empty()) {
+                    // Try to extract error message from response
+                    try {
+                        auto err = json::parse(response.body);
+                        if (err.contains("error") && err["error"].contains("message")) {
+                            error.message = err["error"]["message"].get<std::string>();
+                        }
+                    } catch (...) {
+                        error.message += " - " + response.body.substr(0, 500);
+                    }
+                }
+                spdlog::error("API error: {}", error.message);
                 (*shared_callback)(error);
                 (*shared_complete)();
                 return;
