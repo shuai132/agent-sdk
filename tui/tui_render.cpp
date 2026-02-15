@@ -511,4 +511,83 @@ Element build_question_panel(AppState& state) {
   });
 }
 
+// ============================================================
+// 登录面板（Qwen OAuth）
+// ============================================================
+
+Element build_login_panel(const AppState& state) {
+  Elements content;
+
+  // 标题
+  auto header = hbox({
+      text(" 🔐 Qwen OAuth 登录 ") | bold | color(Color::Cyan),
+      filler(),
+  });
+  content.push_back(header);
+  content.push_back(separator() | dim);
+  content.push_back(text(""));
+
+  switch (state.login_state) {
+    case LoginState::NeedLogin:
+      content.push_back(text("  正在初始化认证...") | color(Color::Yellow));
+      break;
+
+    case LoginState::WaitingAuth: {
+      // QR 码显示
+      if (!state.login_qr_code.empty()) {
+        auto qr_lines = split_lines(state.login_qr_code);
+        content.push_back(text("  请扫描二维码或访问以下链接进行授权：") | dim);
+        content.push_back(text(""));
+
+        // 渲染 QR 码
+        for (const auto& line : qr_lines) {
+          content.push_back(text("  " + line));
+        }
+        content.push_back(text(""));
+      }
+
+      // 授权链接和验证码
+      if (!state.login_auth_url.empty()) {
+        content.push_back(hbox({text("  链接: ") | dim, text(state.login_auth_url) | color(Color::Blue) | underlined}));
+      }
+      if (!state.login_user_code.empty()) {
+        content.push_back(hbox({text("  验证码: ") | dim, text(state.login_user_code) | bold | color(Color::Green)}));
+      }
+      content.push_back(text(""));
+
+      // 状态消息
+      if (!state.login_status_msg.empty()) {
+        content.push_back(text("  " + state.login_status_msg) | color(Color::Yellow));
+      } else {
+        content.push_back(text("  等待授权中...") | color(Color::Yellow) | blink);
+      }
+      break;
+    }
+
+    case LoginState::Success:
+      content.push_back(text("  ✓ 登录成功！") | bold | color(Color::Green));
+      content.push_back(text(""));
+      content.push_back(text("  正在进入应用...") | dim);
+      break;
+
+    case LoginState::Failed:
+      content.push_back(text("  ✗ 登录失败") | bold | color(Color::Red));
+      if (!state.login_error_msg.empty()) {
+        content.push_back(text(""));
+        content.push_back(text("  错误: " + state.login_error_msg) | color(Color::Red));
+      }
+      content.push_back(text(""));
+      content.push_back(text("  按 Enter 重试，按 Esc 退出") | dim);
+      break;
+
+    default:
+      break;
+  }
+
+  content.push_back(text(""));
+  content.push_back(filler());
+
+  return vbox(content) | flex | borderRounded;
+}
+
 }  // namespace agent_cli

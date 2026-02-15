@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(agent-sdk VERSION 0.1.0 LANGUAGES CXX)
+project(agent-sdk VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,10 +14,12 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     option(AGENT_BUILD_TESTS "Build tests" ON)
     option(AGENT_BUILD_EXAMPLES "Build examples" ON)
     option(AGENT_BUILD_CLI "Build agent_cli TUI application" ON)
+    option(AGENT_PLUGIN_QWEN "Build Qwen OAuth plugin" ON)
 else ()
     option(AGENT_BUILD_TESTS "Build tests" OFF)
     option(AGENT_BUILD_EXAMPLES "Build examples" OFF)
     option(AGENT_BUILD_CLI "Build agent_cli TUI application" OFF)
+    option(AGENT_PLUGIN_QWEN "Build Qwen OAuth plugin" OFF)
 endif ()
 
 # Third-party dependencies via git submodules
@@ -47,6 +49,22 @@ add_subdirectory(${THIRDPARTY_DIR}/ftxui)
 
 # OpenSSL for HTTPS
 find_package(OpenSSL REQUIRED)
+
+# Collect plugin sources
+set(PLUGIN_SOURCES
+        src/plugin/auth_provider.cpp
+)
+
+if (AGENT_PLUGIN_QWEN)
+    list(APPEND PLUGIN_SOURCES
+            src/plugin/qwen/qwen_oauth.cpp
+            src/plugin/qrcode.cpp
+            thirdparty/QRCode/src/qrcode.c
+    )
+    message(STATUS "Qwen OAuth plugin: ENABLED")
+else ()
+    message(STATUS "Qwen OAuth plugin: DISABLED")
+endif ()
 
 # Main library
 add_library(${AGENT_SDK_NAME}
@@ -96,16 +114,22 @@ add_library(${AGENT_SDK_NAME}
         src/mcp/client.cpp
         src/mcp/transport.cpp
 
-        # Auth
-        src/auth/qwen_oauth.cpp
+        # Plugin system
+        ${PLUGIN_SOURCES}
 
         # Skill system
         src/skill/skill.cpp
         src/tool/builtin/skill.cpp
 )
 
+# Add compile definition for Qwen plugin
+if (AGENT_PLUGIN_QWEN)
+    target_compile_definitions(${AGENT_SDK_NAME} PUBLIC AGENT_PLUGIN_QWEN=1)
+endif ()
+
 target_include_directories(${AGENT_SDK_NAME} PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${THIRDPARTY_DIR}/QRCode/src
 )
 
 target_link_libraries(${AGENT_SDK_NAME} PUBLIC
@@ -136,8 +160,10 @@ if (AGENT_BUILD_EXAMPLES)
     add_executable(${AGENT_SDK_NAME}_tool_test examples/tool_test.cpp)
     target_link_libraries(${AGENT_SDK_NAME}_tool_test PRIVATE ${AGENT_SDK_NAME})
 
-    add_executable(${AGENT_SDK_NAME}_qwen_oauth_test examples/qwen_oauth_test.cpp)
-    target_link_libraries(${AGENT_SDK_NAME}_qwen_oauth_test PRIVATE ${AGENT_SDK_NAME})
+    if (AGENT_PLUGIN_QWEN)
+        add_executable(${AGENT_SDK_NAME}_qwen_oauth_test examples/qwen_oauth_test.cpp)
+        target_link_libraries(${AGENT_SDK_NAME}_qwen_oauth_test PRIVATE ${AGENT_SDK_NAME})
+    endif ()
 endif ()
 
 # CLI TUI application
@@ -179,6 +205,7 @@ if (AGENT_BUILD_TESTS)
             tests/test_net.cpp
             tests/test_agent_cli.cpp
             tests/test_history_logic.cpp
+            tests/test_plugin_auth.cpp
             # TUI components for CLI tests
             tui/tui_components.cpp
     )

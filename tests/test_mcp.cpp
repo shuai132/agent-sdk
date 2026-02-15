@@ -3,14 +3,20 @@
 #include <string>
 #include <vector>
 
-#include "auth/qwen_oauth.hpp"
 #include "core/config.hpp"
 #include "mcp/client.hpp"
 #include "mcp/transport.hpp"
 
+#ifdef AGENT_PLUGIN_QWEN
+#include "plugin/qwen/qwen_oauth.hpp"
+#endif
+
 using namespace agent;
-using namespace agent::auth;
 using namespace agent::mcp;
+
+#ifdef AGENT_PLUGIN_QWEN
+using namespace agent::plugin::qwen;
+#endif
 
 // ============================================================
 // JsonRpcTest — JSON-RPC 消息序列化
@@ -292,6 +298,8 @@ TEST(McpManagerTest, InitializeWithEmptyConfig) {
 // QwenOAuthTest — Qwen Portal OAuth
 // ============================================================
 
+#ifdef AGENT_PLUGIN_QWEN
+
 TEST(QwenOAuthTest, Singleton) {
   auto& auth1 = qwen_portal_auth();
   auto& auth2 = qwen_portal_auth();
@@ -388,6 +396,8 @@ TEST(QwenOAuthTest, DeviceCodeResponseParsing) {
   EXPECT_EQ(dcr.expires_in, 900);
   EXPECT_EQ(dcr.interval, 5);
 }
+
+#endif  // AGENT_PLUGIN_QWEN
 
 TEST(McpManagerTest, InitializeWithDisabledServer) {
   auto& mgr = McpManager::instance();

@@ -1,17 +1,19 @@
-#include "auth/qwen_oauth.hpp"
+#include "plugin/qwen/qwen_oauth.hpp"
 
+#include <openssl/sha.h>
 #include <spdlog/spdlog.h>
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
 #include <cstdlib>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <thread>
 
 #include "core/config.hpp"
 
-namespace agent::auth {
+namespace agent::plugin::qwen {
 
 namespace fs = std::filesystem;
 
@@ -45,6 +47,56 @@ OAuthToken OAuthToken::from_json(const json& j) {
   token.refresh_token = j.value("refresh", j.value("refresh_token", ""));
   token.expires_at = j.value("expires", j.value("expiry_date", int64_t(0)));
   return token;
+}
+
+// ============================================================
+// PKCE Helper
+// ============================================================
+
+PkceChallenge PkceChallenge::generate() {
+  PkceChallenge challenge;
+
+  // Generate random code_verifier (43-128 characters from A-Z, a-z, 0-9, "-", ".", "_", "~")
+  static const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dist(0, sizeof(charset) - 2);
+
+  challenge.code_verifier.reserve(64);
+  for (int i = 0; i < 64; i++) {
+    challenge.code_verifier += charset[dist(gen)];
+  }
+
+  // Calculate code_challenge = base64url(sha256(code_verifier))
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  SHA256(reinterpret_cast<const unsigned char*>(challenge.code_verifier.c_str()), challenge.code_verifier.size(), hash);
+
+  // Base64URL encode (no padding)
+  static const char base64url_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+  challenge.code_challenge.reserve(43);
+  int i = 0;
+  for (i = 0; i + 2 < SHA256_DIGEST_LENGTH; i += 3) {
+    uint32_t triple = (hash[i] << 16) | (hash[i + 1] << 8) | hash[i + 2];
+    challenge.code_challenge += base64url_table[(triple >> 18) & 0x3F];
+    challenge.code_challenge += base64url_table[(triple >> 12) & 0x3F];
+    challenge.code_challenge += base64url_table[(triple >> 6) & 0x3F];
+    challenge.code_challenge += base64url_table[triple & 0x3F];
+  }
+  // Handle remaining bytes (SHA256 is 32 bytes, so 2 remaining)
+  if (i < SHA256_DIGEST_LENGTH) {
+    uint32_t triple = hash[i] << 16;
+    if (i + 1 < SHA256_DIGEST_LENGTH) {
+      triple |= hash[i + 1] << 8;
+    }
+    challenge.code_challenge += base64url_table[(triple >> 18) & 0x3F];
+    challenge.code_challenge += base64url_table[(triple >> 12) & 0x3F];
+    if (i + 1 < SHA256_DIGEST_LENGTH) {
+      challenge.code_challenge += base64url_table[(triple >> 6) & 0x3F];
+    }
+  }
+
+  return challenge;
 }
 
 // ============================================================
@@ -130,7 +182,7 @@ std::optional<std::pair<int, std::string>> http_post_sync(const std::string& url
                                                           const std::string& content_type = "application/x-www-form-urlencoded") {
   auto url_parts = parse_url(url);
   if (!url_parts) {
-    spdlog::error("[OAuth] Failed to parse URL: {}", url);
+    spdlog::error("[QwenOAuth] Failed to parse URL: {}", url);
     return std::nullopt;
   }
 
@@ -186,7 +238,7 @@ std::optional<std::pair<int, std::string>> http_post_sync(const std::string& url
 
     return std::make_pair(status_code, response_body);
   } catch (const std::exception& e) {
-    spdlog::error("[OAuth] HTTP POST failed: {}", e.what());
+    spdlog::error("[QwenOAuth] HTTP POST failed: {}", e.what());
     return std::nullopt;
   }
 }
@@ -242,10 +294,10 @@ std::optional<OAuthToken> QwenPortalAuth::import_from_qwen_cli() const {
       return std::nullopt;
     }
 
-    spdlog::info("[OAuth] Imported credentials from Qwen CLI");
+    spdlog::info("[QwenOAuth] Imported credentials from Qwen CLI");
     return token;
   } catch (const std::exception& e) {
-    spdlog::warn("[OAuth] Failed to import Qwen CLI credentials: {}", e.what());
+    spdlog::warn("[QwenOAuth] Failed to import Qwen CLI credentials: {}", e.what());
     return std::nullopt;
   }
 }
@@ -270,7 +322,7 @@ std::optional<OAuthToken> QwenPortalAuth::load_token() const {
         }
       }
     } catch (const std::exception& e) {
-      spdlog::warn("[OAuth] Failed to load token: {}", e.what());
+      spdlog::warn("[QwenOAuth] Failed to load token: {}", e.what());
     }
   }
 
@@ -297,10 +349,10 @@ void QwenPortalAuth::save_token(const OAuthToken& token) const {
     if (file.is_open()) {
       file << token.to_json().dump(2);
       cached_token_ = token;
-      spdlog::info("[OAuth] Token saved to {}", storage_path.string());
+      spdlog::info("[QwenOAuth] Token saved to {}", storage_path.string());
     }
   } catch (const std::exception& e) {
-    spdlog::error("[OAuth] Failed to save token: {}", e.what());
+    spdlog::error("[QwenOAuth] Failed to save token: {}", e.what());
   }
 }
 
@@ -312,7 +364,7 @@ void QwenPortalAuth::clear_token() const {
     std::error_code ec;
     fs::remove(storage_path, ec);
     if (!ec) {
-      spdlog::info("[OAuth] Token cleared");
+      spdlog::info("[QwenOAuth] Token cleared");
     }
   }
 }
@@ -328,14 +380,14 @@ std::optional<json> QwenPortalAuth::http_post(const std::string& url, const std:
   auto [status, response_body] = *result;
 
   if (status < 200 || status >= 300) {
-    spdlog::error("[OAuth] HTTP {} from {}: {}", status, url, response_body);
+    spdlog::error("[QwenOAuth] HTTP {} from {}: {}", status, url, response_body);
     return std::nullopt;
   }
 
   try {
     return json::parse(response_body);
   } catch (const std::exception& e) {
-    spdlog::error("[OAuth] Failed to parse JSON response: {}", e.what());
+    spdlog::error("[QwenOAuth] Failed to parse JSON response: {}", e.what());
     return std::nullopt;
   }
 }
@@ -345,8 +397,15 @@ std::optional<DeviceCodeResponse> QwenPortalAuth::request_device_code() {
     status_callback_("Requesting device code...");
   }
 
-  std::map<std::string, std::string> params;
-  // Add any required parameters for Qwen's device code endpoint
+  // Generate PKCE challenge
+  auto pkce = PkceChallenge::generate();
+  current_code_verifier_ = pkce.code_verifier;  // Save for token exchange
+
+  std::map<std::string, std::string> params{
+      {"client_id", QwenPortalConfig::CLIENT_ID},
+      {"code_challenge", pkce.code_challenge},
+      {"code_challenge_method", "S256"},
+  };
 
   auto result = http_post(QwenPortalConfig::DEVICE_CODE_URL, params);
   if (!result) {
@@ -364,7 +423,7 @@ std::optional<DeviceCodeResponse> QwenPortalAuth::request_device_code() {
   response.interval = j.value("interval", 5);
 
   if (response.device_code.empty() || response.user_code.empty()) {
-    spdlog::error("[OAuth] Invalid device code response");
+    spdlog::error("[QwenOAuth] Invalid device code response");
     return std::nullopt;
   }
 
@@ -378,8 +437,10 @@ std::optional<OAuthToken> QwenPortalAuth::poll_for_token(const DeviceCodeRespons
     std::this_thread::sleep_for(std::chrono::seconds(device_code.interval));
 
     std::map<std::string, std::string> params{
-        {"grant_type", "urn:ietf:params:oauth:grant-type:device_code"},
+        {"grant_type", QwenPortalConfig::DEVICE_GRANT_TYPE},
+        {"client_id", QwenPortalConfig::CLIENT_ID},
         {"device_code", device_code.device_code},
+        {"code_verifier", current_code_verifier_},  // PKCE code_verifier
     };
 
     auto body = build_form_body(params);
@@ -408,13 +469,13 @@ std::optional<OAuthToken> QwenPortalAuth::poll_for_token(const DeviceCodeRespons
           std::this_thread::sleep_for(std::chrono::seconds(5));
           continue;
         } else if (error == "expired_token") {
-          spdlog::error("[OAuth] Device code expired");
+          spdlog::error("[QwenOAuth] Device code expired");
           return std::nullopt;
         } else if (error == "access_denied") {
-          spdlog::error("[OAuth] Access denied by user");
+          spdlog::error("[QwenOAuth] Access denied by user");
           return std::nullopt;
         } else {
-          spdlog::error("[OAuth] Token error: {}", error);
+          spdlog::error("[QwenOAuth] Token error: {}", error);
           return std::nullopt;
         }
       }
@@ -430,15 +491,15 @@ std::optional<OAuthToken> QwenPortalAuth::poll_for_token(const DeviceCodeRespons
       token.expires_at = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() + expires_in * 1000;
 
       if (!token.access_token.empty()) {
-        spdlog::info("[OAuth] Successfully obtained access token");
+        spdlog::info("[QwenOAuth] Successfully obtained access token");
         return token;
       }
     } catch (const std::exception& e) {
-      spdlog::warn("[OAuth] Failed to parse token response: {}", e.what());
+      spdlog::warn("[QwenOAuth] Failed to parse token response: {}", e.what());
     }
   }
 
-  spdlog::error("[OAuth] Device code flow timed out");
+  spdlog::error("[QwenOAuth] Device code flow timed out");
   return std::nullopt;
 }
 
@@ -450,6 +511,7 @@ std::optional<OAuthToken> QwenPortalAuth::do_refresh(const std::string& refresh_
   std::map<std::string, std::string> params{
       {"grant_type", "refresh_token"},
       {"refresh_token", refresh_token},
+      {"client_id", QwenPortalConfig::CLIENT_ID},
   };
 
   auto result = http_post(QwenPortalConfig::TOKEN_URL, params);
@@ -469,11 +531,11 @@ std::optional<OAuthToken> QwenPortalAuth::do_refresh(const std::string& refresh_
   token.expires_at = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() + expires_in * 1000;
 
   if (token.access_token.empty()) {
-    spdlog::error("[OAuth] Refresh failed - no access token in response");
+    spdlog::error("[QwenOAuth] Refresh failed - no access token in response");
     return std::nullopt;
   }
 
-  spdlog::info("[OAuth] Token refreshed successfully");
+  spdlog::info("[QwenOAuth] Token refreshed successfully");
   return token;
 }
 
@@ -505,14 +567,14 @@ std::future<std::optional<OAuthToken>> QwenPortalAuth::authenticate() {
       user_code_callback_(device_code->verification_uri, device_code->user_code, device_code->verification_uri_complete);
     } else {
       // Default: log to console
-      spdlog::info("[OAuth] Please visit: {}", device_code->verification_uri);
-      spdlog::info("[OAuth] Enter code: {}", device_code->user_code);
+      spdlog::info("[QwenOAuth] Please visit: {}", device_code->verification_uri);
+      spdlog::info("[QwenOAuth] Enter code: {}", device_code->user_code);
     }
 
     // Try to open browser
     std::string browser_url = device_code->verification_uri_complete.empty() ? device_code->verification_uri : device_code->verification_uri_complete;
     if (!open_browser(browser_url)) {
-      spdlog::warn("[OAuth] Failed to open browser. Please open the URL manually.");
+      spdlog::warn("[QwenOAuth] Failed to open browser. Please open the URL manually.");
     }
 
     if (status_callback_) {
@@ -554,7 +616,7 @@ std::optional<OAuthToken> QwenPortalAuth::get_valid_token() {
 
   // Check if needs refresh
   if (token->needs_refresh()) {
-    spdlog::info("[OAuth] Token expiring soon, refreshing...");
+    spdlog::info("[QwenOAuth] Token expiring soon, refreshing...");
     auto new_token = do_refresh(token->refresh_token);
     if (new_token) {
       save_token(*new_token);
@@ -562,7 +624,7 @@ std::optional<OAuthToken> QwenPortalAuth::get_valid_token() {
     }
     // If refresh failed and token is actually expired, return nullopt
     if (token->is_expired()) {
-      spdlog::warn("[OAuth] Token expired and refresh failed");
+      spdlog::warn("[QwenOAuth] Token expired and refresh failed");
       return std::nullopt;
     }
   }
@@ -587,4 +649,23 @@ QwenPortalAuth& qwen_portal_auth() {
   return instance;
 }
 
-}  // namespace agent::auth
+// ============================================================
+// Plugin implementation
+// ============================================================
+
+std::optional<std::string> QwenAuthProvider::get_auth_header() {
+  auto token = qwen_portal_auth().get_valid_token();
+  if (token) {
+    return "Bearer " + token->access_token;
+  }
+  spdlog::warn("[QwenOAuth] Token not available");
+  return std::nullopt;
+}
+
+void register_qwen_plugin() {
+  auto provider = std::make_shared<QwenAuthProvider>();
+  AuthProviderRegistry::instance().register_provider(provider);
+  spdlog::info("[QwenPlugin] Qwen OAuth plugin registered");
+}
+
+}  // namespace agent::plugin::qwen

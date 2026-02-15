@@ -9,6 +9,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <future>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -20,6 +21,11 @@
 #include "tui_event_handler.h"
 #include "tui_render.h"
 #include "tui_state.h"
+
+#ifdef AGENT_PLUGIN_QWEN
+#include "plugin/qrcode.hpp"
+#include "plugin/qwen/qwen_oauth.hpp"
+#endif
 
 using namespace agent;
 using namespace agent_cli;
@@ -65,6 +71,11 @@ int main(int argc, char* argv[]) {
   // ===== 初始化框架 =====
   asio::io_context io_ctx;
   agent::init();
+
+#ifdef AGENT_PLUGIN_QWEN
+  // 注册 Qwen OAuth 插件（如果编译时启用）
+  plugin::qwen::register_qwen_plugin();
+#endif
   auto store = std::make_shared<JsonMessageStore>(config_paths::config_dir() / "sessions");
   auto session = Session::create(io_ctx, config, AgentType::Build, store);
 
@@ -79,6 +90,23 @@ int main(int argc, char* argv[]) {
 
   // ===== 状态与上下文 =====
   AppState state;
+
+#ifdef AGENT_PLUGIN_QWEN
+  // ===== Qwen OAuth 登录检测 =====
+  bool needs_qwen_login = false;
+  if (openai_key && std::string(openai_key) == "qwen-oauth") {
+    auto& auth = plugin::qwen::qwen_portal_auth();
+    auto token = auth.load_token();
+    if (!token || token->is_expired()) {
+      needs_qwen_login = true;
+      state.login_state = LoginState::NeedLogin;
+    }
+  }
+
+  // 登录认证的 future（用于异步等待）
+  std::future<std::optional<plugin::qwen::OAuthToken>> login_future;
+  bool login_started = false;
+#endif
   state.agent_state.set_model(config.default_model);
   state.agent_state.set_session_id(session->id());
   state.agent_state.update_context(session->estimated_context_tokens(), session->context_window());
@@ -139,6 +167,16 @@ int main(int argc, char* argv[]) {
 
   // ===== 主渲染器 =====
   auto final_renderer = Renderer(input_with_prompt, [&] {
+    // 登录面板（最高优先级）
+    if (state.login_state != LoginState::NotRequired && state.login_state != LoginState::Success) {
+      auto login_panel = build_login_panel(state);
+      return vbox({
+          text(" agent_cli ") | bold | color(Color::White) | bgcolor(Color::Blue),
+          separator() | dim,
+          login_panel | flex,
+      });
+    }
+
     auto status_bar = build_status_bar(state);
     auto chat_view = build_chat_view(state);
     auto cmd_menu_element = build_cmd_menu(state);
@@ -203,6 +241,48 @@ int main(int argc, char* argv[]) {
   }
 
   while (!loop.HasQuitted()) {
+#ifdef AGENT_PLUGIN_QWEN
+    // ===== 登录流程处理 =====
+    if (needs_qwen_login && state.login_state == LoginState::NeedLogin && !login_started) {
+      login_started = true;
+      auto& auth = plugin::qwen::qwen_portal_auth();
+
+      // 设置回调函数
+      auth.set_status_callback([&state, &screen](const std::string& msg) {
+        state.login_status_msg = msg;
+        screen.Post(Event::Custom);
+      });
+
+      auth.set_user_code_callback([&state, &screen](const std::string& uri, const std::string& code, const std::string& uri_complete) {
+        std::string auth_url = uri_complete.empty() ? uri : uri_complete;
+        state.login_auth_url = auth_url;
+        state.login_user_code = code;
+        state.login_qr_code = plugin::QrCode::encode(auth_url);
+        state.login_state = LoginState::WaitingAuth;
+        screen.Post(Event::Custom);
+      });
+
+      // 启动异步认证
+      login_future = auth.authenticate();
+    }
+
+    // 检查登录是否完成
+    if (needs_qwen_login && login_started && state.login_state == LoginState::WaitingAuth) {
+      if (login_future.valid() && login_future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+        auto token = login_future.get();
+        if (token) {
+          state.login_state = LoginState::Success;
+          state.chat_log.push({EntryKind::SystemInfo, "✓ Qwen OAuth 登录成功！", ""});
+          needs_qwen_login = false;
+        } else {
+          state.login_state = LoginState::Failed;
+          state.login_error_msg = "认证失败，请重试";
+        }
+        screen.Post(Event::Custom);
+      }
+    }
+#endif
+
     loop.RunOnce();
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }

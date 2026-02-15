@@ -41,4 +41,7 @@ ftxui::Element build_sessions_panel(AppState& state);
 // 构建 Question 面板（用于 question 工具交互）
 ftxui::Element build_question_panel(AppState& state);
 
+// 构建登录面板（用于 Qwen OAuth 认证）
+ftxui::Element build_login_panel(const AppState& state);
+
 }  // namespace agent_cli

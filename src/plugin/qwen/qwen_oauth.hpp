@@ -8,7 +8,9 @@
 #include <optional>
 #include <string>
 
-namespace agent::auth {
+#include "plugin/auth_provider.hpp"
+
+namespace agent::plugin::qwen {
 
 using json = nlohmann::json;
 
@@ -36,12 +38,26 @@ struct DeviceCodeResponse {
   int interval = 5;                       // Polling interval in seconds
 };
 
+// PKCE (Proof Key for Code Exchange) helper
+struct PkceChallenge {
+  std::string code_verifier;   // Random string (43-128 chars)
+  std::string code_challenge;  // Base64URL(SHA256(code_verifier))
+
+  // Generate a new PKCE challenge pair
+  static PkceChallenge generate();
+};
+
 // Qwen Portal OAuth configuration
 struct QwenPortalConfig {
-  // Qwen Portal OAuth endpoints (from OpenClaw reference)
-  static constexpr const char* BASE_URL = "https://portal.qwen.ai/v1";
-  static constexpr const char* DEVICE_CODE_URL = "https://portal.qwen.ai/oauth/device/code";
-  static constexpr const char* TOKEN_URL = "https://portal.qwen.ai/oauth/token";
+  // Qwen OAuth endpoints (matching official Qwen CLI)
+  static constexpr const char* BASE_URL = "https://chat.qwen.ai";
+  static constexpr const char* DEVICE_CODE_URL = "https://chat.qwen.ai/api/v1/oauth2/device/code";
+  static constexpr const char* TOKEN_URL = "https://chat.qwen.ai/api/v1/oauth2/token";
+
+  // OAuth client configuration (matching official Qwen CLI)
+  static constexpr const char* CLIENT_ID = "f0304373b74a44d2b584a3fb70ca9e56";
+  static constexpr const char* SCOPE = "openid profile email model.completion";
+  static constexpr const char* DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
   // API key placeholder for OAuth (used in config)
   static constexpr const char* OAUTH_PLACEHOLDER = "qwen-oauth";
@@ -49,9 +65,9 @@ struct QwenPortalConfig {
   // Provider identifier
   static constexpr const char* PROVIDER_ID = "qwen-portal";
 
-  // Model IDs
-  static constexpr const char* CODER_MODEL = "qwen-portal/coder-model";
-  static constexpr const char* VISION_MODEL = "qwen-portal/vision-model";
+  // Model IDs (for portal.qwen.ai API)
+  static constexpr const char* CODER_MODEL = "coder-model";
+  static constexpr const char* VISION_MODEL = "vision-model";
 };
 
 // OAuth authenticator for Qwen Portal
@@ -125,9 +141,28 @@ class QwenPortalAuth {
   StatusCallback status_callback_;
   UserCodeCallback user_code_callback_;
   mutable std::optional<OAuthToken> cached_token_;
+  mutable std::string current_code_verifier_;  // PKCE code_verifier for current auth flow
 };
 
 // Get or create the shared authenticator instance
 QwenPortalAuth& qwen_portal_auth();
 
-}  // namespace agent::auth
+// Auth provider implementation for plugin system
+class QwenAuthProvider : public AuthProvider {
+ public:
+  std::string scheme() const override {
+    return QwenPortalConfig::OAUTH_PLACEHOLDER;
+  }
+
+  std::optional<std::string> get_auth_header() override;
+
+  bool can_handle(const std::string& api_key) const override {
+    return api_key == QwenPortalConfig::OAUTH_PLACEHOLDER;
+  }
+};
+
+// Register Qwen OAuth plugin with the auth provider registry
+// Call this at startup to enable Qwen OAuth support
+void register_qwen_plugin();
+
+}  // namespace agent::plugin::qwen
