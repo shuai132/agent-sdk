@@ -91,12 +91,12 @@ int main() {
   Config config;
   config.providers["openai"] = ProviderConfig{
       "openai",
-      "qwen-oauth",                // 使用 OAuth 占位符
-      "https://chat.qwen.ai/api",  // Qwen Chat API base URL
+      "qwen-oauth",              // 使用 OAuth 占位符
+      "https://portal.qwen.ai",  // Qwen Portal API base URL
       std::nullopt,
       {},
   };
-  config.default_model = "qwen-coder-plus-latest";  // 实际模型名称
+  config.default_model = "coder-model";  // portal.qwen.ai 使用的模型名称
 
   // 4. 初始化
   asio::io_context io_ctx;
@@ -145,19 +145,19 @@ int main() {
     std::cout << std::endl;
   });
 
-  // 7. 发送测试消息
-  std::cout << "Sending test prompt to Qwen API..." << std::endl;
-  std::cout << "Model: " << config.default_model << std::endl;
-  std::cout << "Base URL: https://chat.qwen.ai/api" << std::endl;
-  std::cout << "\n--- Response ---\n" << std::endl;
-
-  session->prompt("Say 'Hello from Qwen!' in exactly 5 words.");
-
-  // 8. 运行 IO context
+  // 7. 运行 IO context (需要在发送消息之前启动)
   std::thread io_thread([&io_ctx]() {
     auto work = asio::make_work_guard(io_ctx);
     io_ctx.run();
   });
+
+  // 8. 发送测试消息
+  std::cout << "Sending test prompt to Qwen API..." << std::endl;
+  std::cout << "Model: " << config.default_model << std::endl;
+  std::cout << "Base URL: https://portal.qwen.ai" << std::endl;
+  std::cout << "\n--- Response ---\n" << std::endl;
+
+  session->prompt("Say 'Hello from Qwen!' in exactly 5 words.");
 
   // 等待完成（最多 30 秒）
   auto start = std::chrono::steady_clock::now();

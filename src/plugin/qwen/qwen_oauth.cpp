@@ -7,6 +7,7 @@
 #include <asio/ssl.hpp>
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
 #include <random>
 #include <sstream>
 #include <thread>
@@ -654,11 +655,42 @@ QwenPortalAuth& qwen_portal_auth() {
 // ============================================================
 
 std::optional<std::string> QwenAuthProvider::get_auth_header() {
-  auto token = qwen_portal_auth().get_valid_token();
+  auto& auth = qwen_portal_auth();
+  auto token = auth.get_valid_token();
   if (token) {
     return "Bearer " + token->access_token;
   }
-  spdlog::warn("[QwenOAuth] Token not available");
+
+  // Token not available - try to re-authenticate
+  spdlog::warn("[QwenOAuth] Token expired or unavailable, starting re-authentication...");
+
+  // Set up user code callback for console display
+  auth.set_user_code_callback([](const std::string& uri, const std::string& code, const std::string& uri_complete) {
+    std::cerr << "\n";
+    std::cerr << "╭──────────────────────────────────────────────────────────────────╮\n";
+    std::cerr << "│  Qwen OAuth 认证                                                 │\n";
+    std::cerr << "├──────────────────────────────────────────────────────────────────┤\n";
+    std::cerr << "│  请在浏览器中访问以下链接并输入验证码:                           │\n";
+    std::cerr << "│  " << uri << std::string(60 - uri.size(), ' ') << "│\n";
+    std::cerr << "│  验证码: " << code << std::string(53 - code.size(), ' ') << "│\n";
+    std::cerr << "╰──────────────────────────────────────────────────────────────────╯\n";
+    std::cerr << std::flush;
+  });
+
+  auth.set_status_callback([](const std::string& message) {
+    spdlog::info("[QwenOAuth] {}", message);
+  });
+
+  // Start authentication and wait for result
+  auto future = auth.authenticate();
+  auto new_token = future.get();
+
+  if (new_token) {
+    spdlog::info("[QwenOAuth] Re-authentication successful");
+    return "Bearer " + new_token->access_token;
+  }
+
+  spdlog::error("[QwenOAuth] Re-authentication failed");
   return std::nullopt;
 }
 

@@ -174,6 +174,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
       base_url_ + "/v1/chat/completions", options,
       [this, shared_callback, sse_buffer](const std::string& chunk) {
         // Accumulate chunk into SSE buffer and parse complete events
+        spdlog::debug("OpenAI SSE chunk received ({} bytes): {}", chunk.size(), chunk.substr(0, std::min(chunk.size(), size_t(200))));
         *sse_buffer += chunk;
 
         // Process complete SSE events (ended by \n\n or \r\n\r\n)
@@ -206,6 +207,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
         }
       },
       [shared_callback, shared_complete](int status_code, const std::string& error) {
+        spdlog::debug("OpenAI stream completed: status={}, error={}", status_code, error.empty() ? "(none)" : error);
         if (!error.empty()) {
           StreamError err;
           err.message = error;
@@ -228,6 +230,13 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
         }
       }
     }
+
+    // Emit FinishStep if not already emitted via usage chunk
+    // This handles APIs (like Qwen Portal) that don't send usage info
+    FinishStep finish;
+    finish.reason = tool_calls_.empty() ? FinishReason::Stop : FinishReason::ToolCalls;
+    callback(finish);
+
     tool_calls_.clear();
     return;
   }

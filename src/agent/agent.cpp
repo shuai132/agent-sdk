@@ -6,6 +6,7 @@
 #include "core/version.hpp"
 #include "llm/anthropic.hpp"
 #include "mcp/client.hpp"
+#include "plugin/qwen/qwen_oauth.hpp"
 #include "skill/skill.hpp"
 #include "tool/builtin/builtins.hpp"
 
@@ -24,6 +25,9 @@ void force_provider_registration() {
 void init() {
   force_provider_registration();
   tools::register_builtins();
+
+  // Register Qwen OAuth plugin for portal.qwen.ai authentication
+  plugin::qwen::register_qwen_plugin();
 
   // Discover skills from current working directory and standard locations
   auto cwd = std::filesystem::current_path();

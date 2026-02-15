@@ -30,10 +30,13 @@ std::string AuthProviderRegistry::get_auth_header(const std::string& api_key) {
       if (header) {
         return *header;
       }
-      spdlog::warn("[Plugin] Auth provider {} failed to get header", provider->scheme());
+      // Dynamic auth failed - return empty string to indicate authentication failure
+      // Do NOT fall back to using api_key as Bearer token when it's a placeholder
+      spdlog::error("[Plugin] Auth provider {} failed to get header, authentication required", provider->scheme());
+      return "";
     }
   }
-  // Default: use api_key as Bearer token
+  // Default: use api_key as Bearer token (for static API keys)
   return "Bearer " + api_key;
 }
 
