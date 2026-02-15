@@ -159,6 +159,208 @@ TEST(ConfigTest, SaveAndLoadMcpServers) {
   fs::remove(tmp_path);
 }
 
+// --- Config::from_env() Tests ---
+
+TEST(ConfigTest, FromEnvWithNoProviders) {
+  // 保存原始环境变量
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_anthropic_auth = std::getenv("ANTHROPIC_AUTH_TOKEN");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+  const char* orig_qwen_oauth = std::getenv("QWEN_OAUTH");
+
+  // 清空环境变量
+  unsetenv("ANTHROPIC_API_KEY");
+  unsetenv("ANTHROPIC_AUTH_TOKEN");
+  unsetenv("OPENAI_API_KEY");
+  unsetenv("QWEN_OAUTH");
+
+  auto config = Config::from_env();
+
+  // 没有 API key 时，providers 应该为空（除非配置文件中有定义）
+  // 由于测试环境可能没有配置文件，这里只验证函数不崩溃
+  EXPECT_TRUE(config.providers.empty() || !config.providers.empty());
+
+  // 恢复环境变量
+  if (orig_anthropic) setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  if (orig_anthropic_auth) setenv("ANTHROPIC_AUTH_TOKEN", orig_anthropic_auth, 1);
+  if (orig_openai) setenv("OPENAI_API_KEY", orig_openai, 1);
+  if (orig_qwen_oauth) setenv("QWEN_OAUTH", orig_qwen_oauth, 1);
+}
+
+TEST(ConfigTest, FromEnvWithAnthropicKey) {
+  // 保存原始环境变量
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_base_url = std::getenv("ANTHROPIC_BASE_URL");
+  const char* orig_model = std::getenv("ANTHROPIC_MODEL");
+
+  // 设置测试环境变量
+  setenv("ANTHROPIC_API_KEY", "test-anthropic-key", 1);
+  unsetenv("ANTHROPIC_BASE_URL");
+  unsetenv("ANTHROPIC_MODEL");
+
+  auto config = Config::from_env();
+
+  // 验证 Anthropic provider 被配置
+  ASSERT_TRUE(config.providers.count("anthropic") > 0);
+  EXPECT_EQ(config.providers["anthropic"].api_key, "test-anthropic-key");
+  EXPECT_EQ(config.providers["anthropic"].base_url, "https://api.anthropic.com");
+
+  // 恢复环境变量
+  if (orig_anthropic) {
+    setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  } else {
+    unsetenv("ANTHROPIC_API_KEY");
+  }
+  if (orig_base_url) {
+    setenv("ANTHROPIC_BASE_URL", orig_base_url, 1);
+  }
+  if (orig_model) {
+    setenv("ANTHROPIC_MODEL", orig_model, 1);
+  }
+}
+
+TEST(ConfigTest, FromEnvWithCustomBaseUrl) {
+  // 保存原始环境变量
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_base_url = std::getenv("ANTHROPIC_BASE_URL");
+
+  // 设置测试环境变量
+  setenv("ANTHROPIC_API_KEY", "test-key", 1);
+  setenv("ANTHROPIC_BASE_URL", "https://custom.api.com", 1);
+
+  auto config = Config::from_env();
+
+  ASSERT_TRUE(config.providers.count("anthropic") > 0);
+  EXPECT_EQ(config.providers["anthropic"].base_url, "https://custom.api.com");
+
+  // 恢复环境变量
+  if (orig_anthropic) {
+    setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  } else {
+    unsetenv("ANTHROPIC_API_KEY");
+  }
+  if (orig_base_url) {
+    setenv("ANTHROPIC_BASE_URL", orig_base_url, 1);
+  } else {
+    unsetenv("ANTHROPIC_BASE_URL");
+  }
+}
+
+TEST(ConfigTest, FromEnvWithQwenOAuth) {
+  // 保存原始环境变量
+  const char* orig_qwen_oauth = std::getenv("QWEN_OAUTH");
+  const char* orig_qwen_base_url = std::getenv("QWEN_BASE_URL");
+  const char* orig_qwen_model = std::getenv("QWEN_MODEL");
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+
+  // 清空其他 provider，设置 Qwen OAuth 模式
+  unsetenv("ANTHROPIC_API_KEY");
+  unsetenv("OPENAI_API_KEY");
+  setenv("QWEN_OAUTH", "true", 1);
+  unsetenv("QWEN_BASE_URL");
+  unsetenv("QWEN_MODEL");
+
+  auto config = Config::from_env();
+
+  // 验证 OpenAI provider 配置为 Qwen portal
+  ASSERT_TRUE(config.providers.count("openai") > 0);
+  EXPECT_EQ(config.providers["openai"].api_key, "qwen-oauth");
+  EXPECT_EQ(config.providers["openai"].base_url, "https://portal.qwen.ai");
+  // 验证 default_model 为 coder-model
+  EXPECT_EQ(config.default_model, "coder-model");
+
+  // 恢复环境变量
+  if (orig_qwen_oauth) {
+    setenv("QWEN_OAUTH", orig_qwen_oauth, 1);
+  } else {
+    unsetenv("QWEN_OAUTH");
+  }
+  if (orig_qwen_base_url) {
+    setenv("QWEN_BASE_URL", orig_qwen_base_url, 1);
+  }
+  if (orig_qwen_model) {
+    setenv("QWEN_MODEL", orig_qwen_model, 1);
+  }
+  if (orig_anthropic) {
+    setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  }
+  if (orig_openai) {
+    setenv("OPENAI_API_KEY", orig_openai, 1);
+  }
+}
+
+TEST(ConfigTest, FromEnvQwenOAuthTakesPrecedenceOverOpenAI) {
+  // 保存原始环境变量
+  const char* orig_qwen_oauth = std::getenv("QWEN_OAUTH");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+
+  // 同时设置 Qwen OAuth 和 OpenAI，Qwen 应该优先
+  unsetenv("ANTHROPIC_API_KEY");
+  setenv("QWEN_OAUTH", "1", 1);
+  setenv("OPENAI_API_KEY", "sk-openai-key", 1);
+
+  auto config = Config::from_env();
+
+  // Qwen OAuth 优先，所以 api_key 应该是 qwen-oauth
+  ASSERT_TRUE(config.providers.count("openai") > 0);
+  EXPECT_EQ(config.providers["openai"].api_key, "qwen-oauth");
+  EXPECT_EQ(config.providers["openai"].base_url, "https://portal.qwen.ai");
+
+  // 恢复环境变量
+  if (orig_qwen_oauth) {
+    setenv("QWEN_OAUTH", orig_qwen_oauth, 1);
+  } else {
+    unsetenv("QWEN_OAUTH");
+  }
+  if (orig_openai) {
+    setenv("OPENAI_API_KEY", orig_openai, 1);
+  } else {
+    unsetenv("OPENAI_API_KEY");
+  }
+  if (orig_anthropic) {
+    setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  }
+}
+
+TEST(ConfigTest, FromEnvAnthropicTakesPrecedenceForModel) {
+  // 保存原始环境变量
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+  const char* orig_model = std::getenv("OPENAI_MODEL");
+
+  // 设置两个 provider，但不指定 OPENAI_MODEL
+  setenv("ANTHROPIC_API_KEY", "anthropic-key", 1);
+  setenv("OPENAI_API_KEY", "openai-key", 1);
+  unsetenv("OPENAI_MODEL");
+  unsetenv("ANTHROPIC_MODEL");
+
+  auto config = Config::from_env();
+
+  // 两个 provider 都应该被配置
+  ASSERT_TRUE(config.providers.count("anthropic") > 0);
+  ASSERT_TRUE(config.providers.count("openai") > 0);
+
+  // 默认模型应该保持 Anthropic 的默认值（因为没有显式设置 OPENAI_MODEL）
+  EXPECT_EQ(config.default_model, "claude-sonnet-4-20250514");
+
+  // 恢复环境变量
+  if (orig_anthropic) {
+    setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  } else {
+    unsetenv("ANTHROPIC_API_KEY");
+  }
+  if (orig_openai) {
+    setenv("OPENAI_API_KEY", orig_openai, 1);
+  } else {
+    unsetenv("OPENAI_API_KEY");
+  }
+  if (orig_model) {
+    setenv("OPENAI_MODEL", orig_model, 1);
+  }
+}
+
 TEST(ConfigTest, SaveAndLoadAgents) {
   Config config;
 

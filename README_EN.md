@@ -196,28 +196,37 @@ make -j$(nproc)
 ### Run the Agent CLI
 
 ```bash
-# Set API Key (Anthropic)
-export ANTHROPIC_API_KEY="your-api-key"
+# Run
+./build/agent_cli
 
-# Optional: custom API endpoint and model
+# Show help
+./build/agent_cli --help
+```
+
+**Environment Variable Configuration** (choose one):
+
+```bash
+# Option 1: Qwen Portal (OAuth authentication, no API key required, recommended)
+export QWEN_OAUTH=1
+# Optional overrides:
+export QWEN_BASE_URL="https://portal.qwen.ai"
+export QWEN_MODEL="coder-model"
+# On first use, a QR code will be displayed for login authentication
+
+# Option 2: Anthropic
+export ANTHROPIC_API_KEY="your-api-key"
+# Optional overrides:
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 export ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 
-# Or use OpenAI
+# Option 3: OpenAI (or compatible API)
 export OPENAI_API_KEY="your-api-key"
-export OPENAI_BASE_URL="https://api.openai.com"  # Optional, can also point to OpenAI API-compatible services
+# Optional overrides:
+export OPENAI_BASE_URL="https://api.openai.com"
 export OPENAI_MODEL="gpt-4o"
-
-# Or use Qwen Portal (OAuth authentication, no API Key required)
-export OPENAI_API_KEY="qwen-oauth"
-export OPENAI_BASE_URL="https://portal.qwen.ai"
-export OPENAI_MODEL="qwen-coder-plus-latest"
-# On first use, a browser window will open for login authentication
-# You can also pre-authenticate using qwen cli: qwen auth login
-
-# Run
-./build/agent
 ```
+
+> **Priority**: `QWEN_OAUTH` > `OPENAI_API_KEY` (Qwen OAuth takes precedence when both are set)
 
 ### Code Example
 

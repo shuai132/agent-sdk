@@ -15,38 +15,37 @@ int main() {
   // Initialize agent framework (registers providers)
   agent::init();
 
-  // Get configuration from environment
-  const char* api_key = std::getenv("ANTHROPIC_AUTH_TOKEN");
-  if (!api_key) {
-    api_key = std::getenv("ANTHROPIC_API_KEY");
-  }
+  // Load configuration from environment variables
+  auto config = Config::from_env();
 
-  const char* base_url = std::getenv("ANTHROPIC_BASE_URL");
-  const char* model = std::getenv("ANTHROPIC_MODEL");
-
-  if (!api_key) {
-    std::cerr << "Error: ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY not set\n";
+  if (config.providers.empty()) {
+    std::cerr << "Error: No API key configured.\n";
+    std::cerr << "Please set one of the following:\n";
+    std::cerr << "  - ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN\n";
+    std::cerr << "  - OPENAI_API_KEY\n";
+    std::cerr << "  - QWEN_OAUTH=true\n";
     return 1;
   }
 
-  std::string url = base_url ? base_url : "https://api.anthropic.com";
-  std::string model_name = model ? model : "claude-sonnet-4-20250514";
+  // Find the first available provider
+  std::string provider_name;
+  ProviderConfig provider_config;
+  for (const auto& [name, cfg] : config.providers) {
+    provider_name = name;
+    provider_config = cfg;
+    break;
+  }
 
-  std::cout << "API URL: " << url << "\n";
-  std::cout << "Model: " << model_name << "\n";
-  std::cout << "API Key: " << std::string(api_key).substr(0, 10) << "...\n\n";
+  std::cout << "Provider: " << provider_name << "\n";
+  std::cout << "API URL: " << provider_config.base_url << "\n";
+  std::cout << "Model: " << config.default_model << "\n";
+  std::cout << "API Key: " << provider_config.api_key.substr(0, 10) << "...\n\n";
 
   // Initialize ASIO
   asio::io_context io_ctx;
 
-  // Create provider config
-  ProviderConfig config;
-  config.name = "anthropic";
-  config.api_key = api_key;
-  config.base_url = url;
-
   // Create provider
-  auto provider = llm::ProviderFactory::instance().create("anthropic", config, io_ctx);
+  auto provider = llm::ProviderFactory::instance().create(provider_name, provider_config, io_ctx);
 
   if (!provider) {
     std::cerr << "Error: Failed to create provider\n";
@@ -62,7 +61,7 @@ int main() {
 
   // Create a simple request
   llm::LlmRequest request;
-  request.model = model_name;
+  request.model = config.default_model;
   request.system_prompt = "You are a helpful assistant. Respond briefly.";
   request.messages = {Message(Role::User, "What is 2+2? Reply in one word.")};
   request.max_tokens = 100;

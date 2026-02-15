@@ -189,28 +189,37 @@ make -j$(nproc)
 ### 运行 Agent CLI
 
 ```bash
-# 设置 API Key（Anthropic）
-export ANTHROPIC_API_KEY="your-api-key"
+# 运行
+./build/agent_cli
 
-# 可选：自定义 API 地址和模型
+# 查看帮助
+./build/agent_cli --help
+```
+
+**环境变量配置**（三选一）：
+
+```bash
+# 方式一：Qwen Portal（OAuth 认证，无需 API Key，推荐）
+export QWEN_OAUTH=1
+# 可选覆盖：
+export QWEN_BASE_URL="https://portal.qwen.ai"
+export QWEN_MODEL="coder-model"
+# 首次使用会显示二维码进行登录认证
+
+# 方式二：Anthropic
+export ANTHROPIC_API_KEY="your-api-key"
+# 可选覆盖：
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 export ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 
-# 或使用 OpenAI
+# 方式三：OpenAI（或兼容 API）
 export OPENAI_API_KEY="your-api-key"
-export OPENAI_BASE_URL="https://api.openai.com"  # 可选，也可配置为兼容 OpenAI API 的服务地址
+# 可选覆盖：
+export OPENAI_BASE_URL="https://api.openai.com"
 export OPENAI_MODEL="gpt-4o"
-
-# 或使用 Qwen Portal（OAuth 认证，无需 API Key）
-export OPENAI_API_KEY="qwen-oauth"
-export OPENAI_BASE_URL="https://portal.qwen.ai"
-export OPENAI_MODEL="qwen-coder-plus-latest"
-# 首次使用会自动打开浏览器进行登录认证
-# 也可预先使用 qwen cli 登录：qwen auth login
-
-# 运行
-./build/agent
 ```
+
+> **优先级**：`QWEN_OAUTH` > `OPENAI_API_KEY`（当同时设置时 Qwen OAuth 优先）
 
 ### 代码示例
 

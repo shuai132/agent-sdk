@@ -78,21 +78,26 @@ void handle_submit(AppState& state, AppContext& ctx, ScreenInteractive& screen) 
 
     case CommandType::Help: {
       std::string h;
-      h += "Commands:\n\n";
+      h += "📋 Commands:\n\n";
       for (const auto& def : command_defs()) {
         std::string cmd_col = def.name;
         if (!def.shortcut.empty()) cmd_col += " (" + def.shortcut + ")";
         while (cmd_col.size() < 24) cmd_col += ' ';
         h += "  " + cmd_col + def.description + "\n";
       }
-      h += "\nKeybindings:\n\n";
+      h += "\n⌨️  Keybindings:\n\n";
       h += "  Esc                   Interrupt running agent\n";
       h += "  Ctrl+C                Press twice to exit\n";
-      h += "  Tab                   Switch build/plan mode\n";
+      h += "  Tab                   Switch Build/Plan mode\n";
       h += "  PageUp / PageDown     Scroll chat history\n";
-      h += "\nMouse Interactions:\n\n";
+      h += "  ↑ / ↓                 Navigate command/file menu\n";
+      h += "\n🖱️  Mouse:\n\n";
       h += "  Click on tool card    Expand/collapse tool details\n";
       h += "  Scroll wheel          Scroll chat history\n";
+      h += "\n💡 Tips:\n\n";
+      h += "  • Type @ to autocomplete file paths\n";
+      h += "  • Type / to see available commands\n";
+      h += "  • Use /sessions to manage multiple conversations\n";
       state.chat_log.push({EntryKind::SystemInfo, h, ""});
       state.input_text.clear();
       return;

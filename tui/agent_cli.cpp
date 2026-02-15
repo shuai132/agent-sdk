@@ -31,42 +31,87 @@ using namespace agent;
 using namespace agent_cli;
 using namespace ftxui;
 
+void print_usage(const char* program_name) {
+  std::cout << "agent_cli " << AGENT_SDK_VERSION_STRING << " — AI Agent TUI\n\n";
+  std::cout << "Usage: " << program_name << " [OPTIONS]\n\n";
+  std::cout << "Options:\n";
+  std::cout << "  -h, --help       Show this help message and exit\n";
+  std::cout << "  -v, --version    Show version information and exit\n\n";
+  std::cout << "Environment Variables (choose one):\n";
+  std::cout << "  QWEN_OAUTH               Set to '1' to enable Qwen Portal OAuth\n";
+  std::cout << "  QWEN_BASE_URL            Custom Qwen Portal base URL\n";
+  std::cout << "  QWEN_MODEL               Custom Qwen model name\n\n";
+  std::cout << "  ANTHROPIC_API_KEY        Anthropic API key\n";
+  std::cout << "  ANTHROPIC_AUTH_TOKEN     Anthropic auth token (alternative)\n";
+  std::cout << "  ANTHROPIC_BASE_URL       Custom Anthropic API base URL\n";
+  std::cout << "  ANTHROPIC_MODEL          Custom Anthropic model name\n\n";
+  std::cout << "  OPENAI_API_KEY           OpenAI API key\n";
+  std::cout << "  OPENAI_BASE_URL          Custom OpenAI API base URL\n";
+  std::cout << "  OPENAI_MODEL             Custom OpenAI model name\n\n";
+  std::cout << "Priority: QWEN_OAUTH > OPENAI_API_KEY (when both are set)\n\n";
+  std::cout << "Examples:\n";
+  std::cout << "  # Use Qwen Portal with OAuth (no API key needed)\n";
+  std::cout << "  export QWEN_OAUTH=1\n";
+  std::cout << "  " << program_name << "\n\n";
+  std::cout << "  # Use Anthropic\n";
+  std::cout << "  export ANTHROPIC_API_KEY=\"your-api-key\"\n";
+  std::cout << "  " << program_name << "\n\n";
+  std::cout << "  # Use OpenAI-compatible API\n";
+  std::cout << "  export OPENAI_API_KEY=\"your-api-key\"\n";
+  std::cout << "  export OPENAI_BASE_URL=\"https://api.example.com/v1\"\n";
+  std::cout << "  " << program_name << "\n\n";
+  std::cout << "TUI Commands:\n";
+  std::cout << "  /help, /h        Show help in TUI\n";
+  std::cout << "  /quit, /q        Exit the program\n";
+  std::cout << "  /sessions, /s    Manage sessions\n";
+  std::cout << "  /clear           Clear chat history\n";
+  std::cout << "  /copy, /c        Copy chat to clipboard\n\n";
+  std::cout << "For more information, visit: https://github.com/shuai132/agent-sdk\n";
+}
+
+void print_version() {
+  std::cout << "agent_cli " << AGENT_SDK_VERSION_STRING << "\n";
+  std::cout << "Build: C++" << __cplusplus << "\n";
+#ifdef __clang__
+  std::cout << "Compiler: Clang " << __clang_major__ << "." << __clang_minor__ << "." << __clang_patchlevel__ << "\n";
+#elif defined(__GNUC__)
+  std::cout << "Compiler: GCC " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << "\n";
+#endif
+}
+
 int main(int argc, char* argv[]) {
-  // ===== 加载配置 =====
-  Config config = Config::load_default();
-
-  const char* openai_key = std::getenv("OPENAI_API_KEY");
-  const char* anthropic_key = std::getenv("ANTHROPIC_API_KEY");
-  if (!anthropic_key) anthropic_key = std::getenv("ANTHROPIC_AUTH_TOKEN");
-
-  if (anthropic_key) {
-    const char* base_url = std::getenv("ANTHROPIC_BASE_URL");
-    const char* model = std::getenv("ANTHROPIC_MODEL");
-    config.providers["anthropic"] = ProviderConfig{"anthropic", anthropic_key, base_url ? base_url : "https://api.anthropic.com", std::nullopt, {}};
-    if (model) config.default_model = model;
-  }
-
-  if (openai_key) {
-    const char* base_url = std::getenv("OPENAI_BASE_URL");
-    const char* model = std::getenv("OPENAI_MODEL");
-
-    // Qwen OAuth 模式：使用 portal.qwen.ai 端点和 coder-model
-    bool is_qwen_oauth = std::string(openai_key) == "qwen-oauth";
-    std::string default_base_url = is_qwen_oauth ? "https://portal.qwen.ai" : "https://api.openai.com";
-    std::string default_model = is_qwen_oauth ? "coder-model" : "gpt-4o";
-
-    config.providers["openai"] = ProviderConfig{"openai", openai_key, base_url ? base_url : default_base_url, std::nullopt, {}};
-    if (model) {
-      config.default_model = model;
-    } else if (!anthropic_key) {
-      config.default_model = default_model;
+  // ===== 解析命令行参数 =====
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-h" || arg == "--help") {
+      print_usage(argv[0]);
+      return 0;
     }
-  }
-
-  if (!anthropic_key && !openai_key) {
-    std::cerr << "Error: No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY\n";
+    if (arg == "-v" || arg == "--version") {
+      print_version();
+      return 0;
+    }
+    // Unknown argument
+    std::cerr << "Unknown option: " << arg << "\n";
+    std::cerr << "Use --help for usage information.\n";
     return 1;
   }
+
+  // ===== 加载配置（从环境变量和配置文件）=====
+  Config config = Config::from_env();
+
+  if (config.providers.empty()) {
+    std::cerr << "Error: No API key configured.\n\n";
+    std::cerr << "Please set one of the following environment variables:\n";
+    std::cerr << "  • QWEN_OAUTH=1         — for Qwen Portal (OAuth, no API key needed)\n";
+    std::cerr << "  • ANTHROPIC_API_KEY    — for Claude models\n";
+    std::cerr << "  • OPENAI_API_KEY       — for OpenAI/compatible models\n\n";
+    std::cerr << "Run '" << argv[0] << " --help' for more information.\n";
+    return 1;
+  }
+
+  // 检测是否为 Qwen OAuth 模式
+  bool is_qwen_oauth = std::getenv("QWEN_OAUTH") != nullptr;
 
   // ===== 初始化框架 =====
   asio::io_context io_ctx;
@@ -94,7 +139,7 @@ int main(int argc, char* argv[]) {
 #ifdef AGENT_PLUGIN_QWEN
   // ===== Qwen OAuth 登录检测 =====
   bool needs_qwen_login = false;
-  if (openai_key && std::string(openai_key) == "qwen-oauth") {
+  if (is_qwen_oauth) {
     auto& auth = plugin::qwen::qwen_portal_auth();
     auto token = auth.load_token();
     if (!token || token->is_expired()) {

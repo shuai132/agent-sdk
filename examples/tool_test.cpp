@@ -21,34 +21,30 @@ int main() {
   // Initialize agent framework
   agent::init();
 
-  // Get configuration from environment
-  const char* api_key = std::getenv("ANTHROPIC_AUTH_TOKEN");
-  if (!api_key) api_key = std::getenv("ANTHROPIC_API_KEY");
+  // Load configuration from environment variables
+  auto config = Config::from_env();
 
-  const char* base_url = std::getenv("ANTHROPIC_BASE_URL");
-  const char* model = std::getenv("ANTHROPIC_MODEL");
-
-  if (!api_key) {
-    std::cerr << "Error: API key not set\n";
+  if (config.providers.empty()) {
+    std::cerr << "Error: No API key configured.\n";
+    std::cerr << "Please set one of the following:\n";
+    std::cerr << "  - ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN\n";
+    std::cerr << "  - OPENAI_API_KEY\n";
+    std::cerr << "  - QWEN_OAUTH=true\n";
     return 1;
   }
 
-  std::string url = base_url ? base_url : "https://api.anthropic.com";
-  std::string model_name = model ? model : "claude-sonnet-4-20250514";
-
-  std::cout << "API URL: " << url << "\n";
-  std::cout << "Model: " << model_name << "\n\n";
-
-  // Create config
-  Config config = Config::load_default();
-  config.providers["anthropic"] = ProviderConfig{"anthropic", api_key, url, std::nullopt, {}};
-  config.default_model = model_name;
+  // Print provider info
+  for (const auto& [name, cfg] : config.providers) {
+    std::cout << "Provider: " << name << "\n";
+    std::cout << "API URL: " << cfg.base_url << "\n";
+  }
+  std::cout << "Model: " << config.default_model << "\n\n";
 
   // Create agent config with model - use "build" as key since AgentType::Build maps to "build"
   AgentConfig agent_cfg;
   agent_cfg.id = "build";  // Must match to_string(AgentType::Build)
   agent_cfg.type = AgentType::Build;
-  agent_cfg.model = model_name;
+  agent_cfg.model = config.default_model;
   agent_cfg.system_prompt =
       "You are a helpful assistant. When asked to list files, use the glob tool with pattern '*' to list files in the current directory. Be concise.";
   agent_cfg.default_permission = Permission::Allow;

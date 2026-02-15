@@ -324,53 +324,23 @@ int main(int argc, char* argv[]) {
   // Log
   spdlog::cfg::load_env_levels();
 
-  // Load configuration
-  Config config = Config::load_default();
+  // Load configuration from environment variables (and config files as base)
+  Config config = Config::from_env();
   std::cout << "Working dir: " << config.working_dir.string() << "\n";
 
-  // Check for API keys in environment — register all available providers
-  const char* anthropic_key = std::getenv("ANTHROPIC_API_KEY");
-  if (!anthropic_key) {
-    anthropic_key = std::getenv("ANTHROPIC_AUTH_TOKEN");
-  }
-  const char* openai_key = std::getenv("OPENAI_API_KEY");
-
-  if (anthropic_key) {
-    const char* base_url = std::getenv("ANTHROPIC_BASE_URL");
-    const char* model = std::getenv("ANTHROPIC_MODEL");
-
-    config.providers["anthropic"] = ProviderConfig{"anthropic", anthropic_key, base_url ? base_url : "https://api.anthropic.com", std::nullopt, {}};
-
-    if (model) {
-      config.default_model = model;
-    }
-
-    std::cout << "Provider: anthropic";
-    if (base_url) std::cout << " (" << base_url << ")";
-    std::cout << "\n";
-  }
-
-  if (openai_key) {
-    const char* base_url = std::getenv("OPENAI_BASE_URL");
-    const char* model = std::getenv("OPENAI_MODEL");
-
-    config.providers["openai"] = ProviderConfig{"openai", openai_key, base_url ? base_url : "https://api.openai.com", std::nullopt, {}};
-
-    // If OPENAI_MODEL is set, or no anthropic key available, use OpenAI model as default
-    if (model) {
-      config.default_model = model;
-    } else if (!anthropic_key) {
-      config.default_model = "gpt-4o";
-    }
-
-    std::cout << "Provider: openai";
-    if (base_url) std::cout << " (" << base_url << ")";
-    std::cout << "\n";
-  }
-
-  if (!anthropic_key && !openai_key) {
+  // Check that at least one provider is configured
+  if (config.providers.empty()) {
     std::cerr << "Error: No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY\n";
-    return 0;
+    return 1;
+  }
+
+  // Display configured providers
+  for (const auto& [name, provider] : config.providers) {
+    std::cout << "Provider: " << name;
+    if (!provider.base_url.empty() && provider.base_url.find("api." + name) == std::string::npos) {
+      std::cout << " (" << provider.base_url << ")";
+    }
+    std::cout << "\n";
   }
 
   std::cout << "Model: " << config.default_model << "\n\n";

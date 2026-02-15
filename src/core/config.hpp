@@ -90,7 +90,15 @@ struct Config {
   // Load from file
   static Config load(const std::filesystem::path& path);
 
+  // Load default config from project/global config files
   static Config load_default();
+
+  // Load config from environment variables, with file config as base
+  // Reads: ANTHROPIC_API_KEY/AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL
+  //        OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+  //        QWEN_OAUTH (true/1/yes), QWEN_BASE_URL, QWEN_MODEL
+  // Note: QWEN_OAUTH takes precedence over OPENAI_API_KEY
+  static Config from_env();
 
   // Save to file
   void save(const std::filesystem::path& path) const;

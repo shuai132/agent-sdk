@@ -155,6 +155,79 @@ Config Config::load_default() {
   return Config{};
 }
 
+Config Config::from_env() {
+  Config config = load_default();
+
+  // Read Anthropic provider from environment
+  const char* anthropic_key = std::getenv("ANTHROPIC_API_KEY");
+  if (!anthropic_key) {
+    anthropic_key = std::getenv("ANTHROPIC_AUTH_TOKEN");
+  }
+
+  if (anthropic_key) {
+    const char* base_url = std::getenv("ANTHROPIC_BASE_URL");
+    const char* model = std::getenv("ANTHROPIC_MODEL");
+
+    ProviderConfig provider;
+    provider.name = "anthropic";
+    provider.api_key = anthropic_key;
+    provider.base_url = base_url ? base_url : "https://api.anthropic.com";
+
+    config.providers["anthropic"] = provider;
+
+    if (model) {
+      config.default_model = model;
+    }
+  }
+
+  // Read Qwen OAuth or OpenAI provider from environment
+  // Qwen OAuth takes precedence over OpenAI if both are set
+  const char* qwen_oauth = std::getenv("QWEN_OAUTH");
+  bool is_qwen_oauth = qwen_oauth && (std::string(qwen_oauth) == "true" || std::string(qwen_oauth) == "1" || std::string(qwen_oauth) == "yes");
+
+  if (is_qwen_oauth) {
+    // Qwen OAuth mode: uses OpenAI-compatible API at portal.qwen.ai
+    const char* base_url = std::getenv("QWEN_BASE_URL");
+    const char* model = std::getenv("QWEN_MODEL");
+
+    ProviderConfig provider;
+    provider.name = "openai";         // Reuse OpenAI provider implementation
+    provider.api_key = "qwen-oauth";  // Special marker for OAuth flow
+    provider.base_url = base_url ? base_url : "https://portal.qwen.ai";
+
+    config.providers["openai"] = provider;
+
+    if (model) {
+      config.default_model = model;
+    } else if (!anthropic_key) {
+      config.default_model = "coder-model";
+    }
+  } else {
+    // Standard OpenAI provider
+    const char* openai_key = std::getenv("OPENAI_API_KEY");
+
+    if (openai_key) {
+      const char* base_url = std::getenv("OPENAI_BASE_URL");
+      const char* model = std::getenv("OPENAI_MODEL");
+
+      ProviderConfig provider;
+      provider.name = "openai";
+      provider.api_key = openai_key;
+      provider.base_url = base_url ? base_url : "https://api.openai.com";
+
+      config.providers["openai"] = provider;
+
+      if (model) {
+        config.default_model = model;
+      } else if (!anthropic_key) {
+        config.default_model = "gpt-4o";
+      }
+    }
+  }
+
+  return config;
+}
+
 void Config::save(const fs::path& path) const {
   json j;
 
