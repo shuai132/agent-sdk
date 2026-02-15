@@ -46,16 +46,25 @@ static void sigint_handler(int) {
 
 // Helper: set up session callbacks
 static void setup_callbacks(std::shared_ptr<Session>& session) {
-  session->on_stream([](const std::string& text) {
+  // 使用 shared_ptr 来在回调间共享状态
+  auto after_tool = std::make_shared<bool>(false);
+
+  session->on_stream([after_tool](const std::string& text) {
+    // 如果刚完成工具调用，先打印 "Assistant: " 前缀
+    if (*after_tool) {
+      std::cout << "\nAssistant: ";
+      *after_tool = false;
+    }
     std::cout << text << std::flush;
   });
 
-  session->on_tool_call([](const std::string& tool, const json& args) {
+  session->on_tool_call([after_tool](const std::string& tool, const json& args) {
+    *after_tool = false;  // 工具开始执行
     std::cout << "\n[Calling tool: " << tool << "]\n";
     std::cout << "[Arguments: " << args.dump(2) << "]\n";
   });
 
-  session->on_tool_result([](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([after_tool](const std::string& tool, const std::string& result, bool is_error) {
     std::cout << "\n[Tool " << tool << " " << (is_error ? "failed" : "completed") << "]\n";
     // 截断过长的输出
     if (result.size() > 500) {
@@ -63,9 +72,11 @@ static void setup_callbacks(std::shared_ptr<Session>& session) {
     } else {
       std::cout << "[Result: " << result << "]\n";
     }
+    *after_tool = true;  // 工具执行完毕，下一次流式输出需要打印前缀
   });
 
-  session->on_complete([](FinishReason reason) {
+  session->on_complete([after_tool](FinishReason reason) {
+    *after_tool = false;  // 重置状态
     // 正常结束不需要提示，只在异常情况下显示
     if (reason != FinishReason::Stop && reason != FinishReason::ToolCalls) {
       std::cout << "\n\n[Session ended: " << to_string(reason) << "]";
