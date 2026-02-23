@@ -168,13 +168,50 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   spdlog::debug("[OpenAI] Request model: {}", request.model);
   spdlog::debug("[OpenAI] Request messages count: {}", request.messages.size());
   spdlog::debug("[OpenAI] Request tools count: {}", request.tools.size());
-  // Log first few messages for debugging
+
+  // Log full request body at info level for debugging
+  spdlog::info("[OpenAI] ===== Full LLM Request =====");
   auto body_json = json::parse(options.body);
-  if (body_json.contains("messages")) {
-    for (size_t i = 0; i < std::min(body_json["messages"].size(), size_t(3)); i++) {
-      spdlog::debug("[OpenAI] Message[{}]: {}", i, body_json["messages"][i].dump());
+
+  // Log system message (first message if role=system)
+  if (body_json.contains("messages") && !body_json["messages"].empty()) {
+    auto& first_msg = body_json["messages"][0];
+    if (first_msg.contains("role") && first_msg["role"] == "system") {
+      std::string system_content = first_msg.value("content", "");
+      spdlog::info("[OpenAI] System prompt ({} chars):\n{}", system_content.size(), system_content);
     }
   }
+
+  // Log tools with their descriptions
+  if (body_json.contains("tools")) {
+    spdlog::info("[OpenAI] Tools ({}):", body_json["tools"].size());
+    for (const auto& tool : body_json["tools"]) {
+      if (tool.contains("function")) {
+        std::string name = tool["function"].value("name", "?");
+        std::string desc = tool["function"].value("description", "");
+        spdlog::info("[OpenAI]   - {}: {}", name, desc);
+      }
+    }
+  }
+
+  // Log conversation messages (excluding system)
+  if (body_json.contains("messages")) {
+    spdlog::info("[OpenAI] Messages ({}):", body_json["messages"].size());
+    for (size_t i = 0; i < body_json["messages"].size(); i++) {
+      auto& msg = body_json["messages"][i];
+      std::string role = msg.value("role", "?");
+      if (role == "system") continue;  // Already logged above
+
+      std::string content;
+      if (msg["content"].is_string()) {
+        content = msg["content"].get<std::string>();
+      } else {
+        content = msg["content"].dump();
+      }
+      spdlog::info("[OpenAI]   [{}] {}: {}", i, role, content);
+    }
+  }
+  spdlog::info("[OpenAI] ===== End Request =====");
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
   auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));

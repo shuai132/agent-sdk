@@ -11,30 +11,28 @@ namespace agent::tools {
 SkillTool::SkillTool() : SimpleTool("skill", "Load a specialized skill that provides domain-specific instructions and workflows.") {}
 
 std::string SkillTool::description() const {
-  // Build dynamic description that lists available skills
+  // Build description with available skills embedded
   auto skills = skill::SkillRegistry::instance().all();
-  if (skills.empty()) {
-    return "Load a specialized skill. No skills are currently available.";
-  }
 
   std::string desc =
-      "Load a specialized skill that provides domain-specific instructions and workflows.\n"
-      "When you recognize that a task matches one of the available skills listed below, "
-      "use this tool to load the full skill instructions.\n\n"
-      "<available_skills>\n";
+      "Load and activate a skill to get specialized instructions for a specific task. "
+      "Skills provide detailed guidance, workflows, and best practices for common development tasks. "
+      "Only call this when the user's request clearly matches an available skill.\n\n";
 
-  for (const auto& s : skills) {
-    desc += "  <skill>\n";
-    desc += "    <name>" + s.name + "</name>\n";
-    desc += "    <description>" + s.description + "</description>\n";
-    if (s.source_path.string().find("/.") != std::string::npos) {
-      // Include location hint for debugging
-      desc += "    <location>" + s.source_path.string() + "</location>\n";
+  if (skills.empty()) {
+    desc += "No skills are currently available.";
+  } else {
+    desc += "Available skills:\n";
+    for (const auto& s : skills) {
+      desc += "  - \"" + s.name + "\": " + s.description + "\n";
     }
-    desc += "  </skill>\n";
+    desc +=
+        "\nTo use a skill:\n"
+        "1. Match the user's request to a skill based on its description\n"
+        "2. Call use_skill with the skill_name parameter set to the exact skill name\n"
+        "3. Follow the instructions returned by the tool";
   }
 
-  desc += "</available_skills>";
   return desc;
 }
 
