@@ -108,6 +108,43 @@ TEST_F(SkillParserTest, ParseSkillWithMetadata) {
   EXPECT_EQ(result.skill->metadata["workflow"], "github");
 }
 
+TEST_F(SkillParserTest, ParseMultilineDescription) {
+  // Test multiline description (YAML indented continuation)
+  auto path = create_skill("git-commit",
+                           "---\n"
+                           "name: git-commit\n"
+                           "description: 智能Git提交助手。触发场景：\n"
+                           "  - 用户说\"提交\"、\"commit\"等\n"
+                           "  - 必须用户主动触发\n"
+                           "---\n"
+                           "Body content\n");
+
+  auto result = parse_skill_file(path);
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(result.skill->name, "git-commit");
+  // Should contain all lines joined with space
+  EXPECT_TRUE(result.skill->description.find("智能Git提交助手") != std::string::npos);
+  EXPECT_TRUE(result.skill->description.find("用户说") != std::string::npos);
+  EXPECT_TRUE(result.skill->description.find("必须用户主动触发") != std::string::npos);
+}
+
+TEST_F(SkillParserTest, ParseLiteralBlockDescription) {
+  // Test YAML literal block style (|)
+  auto path = create_skill("literal-skill",
+                           "---\n"
+                           "name: literal-skill\n"
+                           "description: |\n"
+                           "  This is a literal block.\n"
+                           "  Multiple lines are preserved.\n"
+                           "---\n"
+                           "Body content\n");
+
+  auto result = parse_skill_file(path);
+  ASSERT_TRUE(result.ok());
+  EXPECT_TRUE(result.skill->description.find("literal block") != std::string::npos);
+  EXPECT_TRUE(result.skill->description.find("Multiple lines") != std::string::npos);
+}
+
 TEST_F(SkillParserTest, MissingFrontmatter) {
   auto path = create_skill("bad-skill", "No frontmatter here\n");
 

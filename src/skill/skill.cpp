@@ -54,41 +54,62 @@ static std::pair<std::string, std::string> split_frontmatter(const std::string& 
   return {frontmatter, body};
 }
 
-// Simple YAML-like parser for frontmatter (handles flat key-value + metadata map)
-// This is intentionally simple — not a full YAML parser.
+// Simple YAML-like parser for frontmatter
+// Handles multiline values (indented continuation lines joined with space)
 static std::map<std::string, std::string> parse_flat_yaml(const std::string& yaml) {
   std::map<std::string, std::string> result;
   std::istringstream stream(yaml);
   std::string line;
+  std::string current_key;
+  std::string current_value;
+
+  auto trim = [](const std::string& s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+  };
+
+  auto is_indented = [](const std::string& s) {
+    return !s.empty() && (s[0] == ' ' || s[0] == '\t');
+  };
+
+  auto save_current = [&]() {
+    if (!current_key.empty()) {
+      // Strip quotes if present
+      if (current_value.size() >= 2 &&
+          ((current_value.front() == '"' && current_value.back() == '"') ||
+           (current_value.front() == '\'' && current_value.back() == '\''))) {
+        current_value = current_value.substr(1, current_value.size() - 2);
+      }
+      result[current_key] = current_value;
+    }
+  };
 
   while (std::getline(stream, line)) {
-    // Skip empty lines and comments
-    if (line.empty() || line[0] == '#') continue;
+    if (line.empty() || trim(line).empty() || trim(line)[0] == '#') continue;
 
-    auto colon_pos = line.find(':');
-    if (colon_pos == std::string::npos) continue;
+    if (is_indented(line)) {
+      // Continuation of previous value
+      if (!current_key.empty()) {
+        std::string content = trim(line);
+        if (!content.empty()) {
+          if (!current_value.empty()) current_value += " ";
+          current_value += content;
+        }
+      }
+    } else {
+      // New key-value pair
+      save_current();
 
-    std::string key = line.substr(0, colon_pos);
-    std::string value = line.substr(colon_pos + 1);
+      auto colon_pos = line.find(':');
+      if (colon_pos == std::string::npos) continue;
 
-    // Trim whitespace
-    auto trim = [](std::string& s) {
-      size_t start = s.find_first_not_of(" \t\r\n");
-      size_t end = s.find_last_not_of(" \t\r\n");
-      s = (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
-    };
-
-    trim(key);
-    trim(value);
-
-    // Strip quotes if present
-    if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\''))) {
-      value = value.substr(1, value.size() - 2);
+      current_key = trim(line.substr(0, colon_pos));
+      current_value = trim(line.substr(colon_pos + 1));
     }
-
-    result[key] = value;
   }
 
+  save_current();
   return result;
 }
 
