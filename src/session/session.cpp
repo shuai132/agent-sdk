@@ -381,7 +381,7 @@ void Session::process_stream() {
                     spdlog::debug("[Session {}] Tool call complete: name={}, args={}", id_, builder.name, e.arguments.dump());
 
                     if (on_tool_call_) {
-                      on_tool_call_(builder.name, e.arguments);
+                      on_tool_call_(builder.id, builder.name, e.arguments);
                     }
                     Bus::instance().publish(events::ToolCallStarted{id_, builder.id, builder.name});
                     found = true;
@@ -393,7 +393,7 @@ void Session::process_stream() {
                   tool_call_builders.push_back({e.id, e.name, e.arguments.dump()});
                   spdlog::debug("[Session {}] Tool call complete (no prior delta): name={}, args={}", id_, e.name, e.arguments.dump());
                   if (on_tool_call_) {
-                    on_tool_call_(e.name, e.arguments);
+                    on_tool_call_(e.id, e.name, e.arguments);
                   }
                   Bus::instance().publish(events::ToolCallStarted{id_, e.id, e.name});
                 }
@@ -571,7 +571,7 @@ void Session::execute_tool_calls() {
 
       // Notify tool result callback
       if (on_tool_result_) {
-        on_tool_result_(tc->name, safe_content, result.is_error);
+        on_tool_result_(tc->id, tc->name, safe_content, result.is_error);
       }
 
       Bus::instance().publish(events::ToolCallCompleted{id_, tc->id, tc->name, !result.is_error});
@@ -583,7 +583,7 @@ void Session::execute_tool_calls() {
 
       // Notify tool result callback
       if (on_tool_result_) {
-        on_tool_result_(tc->name, error_msg, true);
+        on_tool_result_(tc->id, tc->name, error_msg, true);
       }
 
       Bus::instance().publish(events::ToolCallCompleted{id_, tc->id, tc->name, false});

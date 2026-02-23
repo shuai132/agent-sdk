@@ -100,8 +100,8 @@ class Session : public std::enable_shared_from_this<Session> {
   using OnMessageCallback = std::function<void(const Message&)>;
   using OnStreamCallback = std::function<void(const std::string& text)>;
   using OnThinkingCallback = std::function<void(const std::string& thinking)>;
-  using OnToolCallCallback = std::function<void(const std::string& tool, const json& args)>;
-  using OnToolResultCallback = std::function<void(const std::string& tool, const std::string& result, bool is_error)>;
+  using OnToolCallCallback = std::function<void(const std::string& tool_call_id, const std::string& tool, const json& args)>;
+  using OnToolResultCallback = std::function<void(const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error)>;
   using OnCompleteCallback = std::function<void(FinishReason)>;
   using OnErrorCallback = std::function<void(const std::string& error)>;
 

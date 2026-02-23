@@ -45,7 +45,7 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     refresh_fn();
   });
 
-  session->on_tool_call([&state, refresh_fn](const std::string& tool, const agent::json& args) {
+  session->on_tool_call([&state, refresh_fn](const std::string& tool_call_id, const std::string& tool, const agent::json& args) {
     // Finalize thinking if there was thinking before tool call
     if (!thinking_buffer.empty()) {
       state.chat_log.push({EntryKind::Thinking, thinking_buffer, ""});
@@ -53,16 +53,16 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     }
     std::string args_str = args.dump(2);
     state.tool_panel.start_tool(tool, args_str);
-    state.chat_log.push({EntryKind::ToolCall, tool, args_str});
+    state.chat_log.push({EntryKind::ToolCall, tool, args_str, tool_call_id});
     state.agent_state.set_activity("Running " + tool + "...");
     refresh_fn();
   });
 
-  session->on_tool_result([&state, refresh_fn](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([&state, refresh_fn](const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error) {
     std::string summary = result;
     if (summary.size() > 2000) summary = summary.substr(0, 2000) + "\n...(" + std::to_string(result.size()) + " chars total)";
     state.tool_panel.finish_tool(tool, summary, is_error);
-    state.chat_log.push({EntryKind::ToolResult, tool + (is_error ? " ✗" : " ✓"), summary});
+    state.chat_log.push({EntryKind::ToolResult, tool + (is_error ? " ✗" : " ✓"), summary, tool_call_id});
     state.agent_state.set_activity("Thinking...");
     refresh_fn();
   });
@@ -78,23 +78,23 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
         break;
       case agent::SubagentEvent::Type::Thinking:
         nested_entry = {EntryKind::Thinking, event.text, ""};
-        state.chat_log.update_tool_activity("task", "💭 Thinking...");
+        state.chat_log.update_tool_activity(tool_call_id, "💭 Thinking...");
         break;
       case agent::SubagentEvent::Type::ToolCall:
         nested_entry = {EntryKind::ToolCall, event.text, event.detail};
-        state.chat_log.update_tool_activity("task", "🔧 " + event.text + "...");
+        state.chat_log.update_tool_activity(tool_call_id, "🔧 " + event.text + "...");
         break;
       case agent::SubagentEvent::Type::ToolResult:
         nested_entry = {EntryKind::ToolResult, event.text + (event.is_error ? " ✗" : " ✓"), event.detail};
         break;
       case agent::SubagentEvent::Type::Complete:
-        state.chat_log.update_tool_activity("task", "");  // Clear activity
-        return;                                           // Don't add nested entry for complete
+        state.chat_log.update_tool_activity(tool_call_id, "");  // Clear activity
+        return;                                                  // Don't add nested entry for complete
       case agent::SubagentEvent::Type::Error:
         nested_entry = {EntryKind::Error, event.text, ""};
         break;
     }
-    state.chat_log.add_nested_entry("task", std::move(nested_entry));
+    state.chat_log.add_nested_entry(tool_call_id, std::move(nested_entry));
     refresh_fn();
   });
 
@@ -193,7 +193,7 @@ void load_history_to_chat_log(AppState& state, const std::shared_ptr<agent::Sess
       // 添加工具调用和结果
       auto tool_calls = msg.tool_calls();
       for (const auto* tc : tool_calls) {
-        state.chat_log.push({EntryKind::ToolCall, tc->name, tc->arguments.dump(2)});
+        state.chat_log.push({EntryKind::ToolCall, tc->name, tc->arguments.dump(2), tc->id});
 
         // 查找对应的工具结果
         bool found = false;
@@ -203,7 +203,7 @@ void load_history_to_chat_log(AppState& state, const std::shared_ptr<agent::Sess
             if (tr->tool_call_id == tc->id) {
               std::string summary = tr->output;
               if (summary.size() > 2000) summary = summary.substr(0, 2000) + "...";
-              state.chat_log.push({EntryKind::ToolResult, tc->name + (tr->is_error ? " ✗" : " ✓"), summary});
+              state.chat_log.push({EntryKind::ToolResult, tc->name + (tr->is_error ? " ✗" : " ✓"), summary, tc->id});
               found = true;
               break;
             }

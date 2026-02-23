@@ -63,11 +63,11 @@ std::future<ToolResult> TaskTool::execute(const json& args, const ToolContext& c
       emit_event(SubagentEvent::Type::Thinking, thinking);
     });
 
-    child_session->on_tool_call([&emit_event](const std::string& tool, const json& args) {
+    child_session->on_tool_call([&emit_event](const std::string& /*tool_call_id*/, const std::string& tool, const json& args) {
       emit_event(SubagentEvent::Type::ToolCall, tool, args.dump(2));
     });
 
-    child_session->on_tool_result([&emit_event](const std::string& tool, const std::string& result, bool is_error) {
+    child_session->on_tool_result([&emit_event](const std::string& /*tool_call_id*/, const std::string& tool, const std::string& result, bool is_error) {
       emit_event(SubagentEvent::Type::ToolResult, tool, result, is_error);
     });
 

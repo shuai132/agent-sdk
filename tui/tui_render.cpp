@@ -332,19 +332,25 @@ Element build_chat_view(AppState& state) {
     if (e.kind == EntryKind::ToolCall) {
       ToolGroup group;
       group.call = e;
-      // Search forward for matching ToolResult (may not be immediately next due to Thinking entries)
-      for (size_t j = i + 1; j < entries.size() && j < i + 5; ++j) {
+      // Search forward for matching ToolResult by tool_call_id (unique identifier)
+      for (size_t j = i + 1; j < entries.size(); ++j) {
         if (entries[j].kind == EntryKind::ToolResult) {
-          // Check if tool names match (ToolResult.text contains tool name)
-          // ToolCall.text is the tool name, ToolResult.text is "tool_name ✓" or "tool_name ✗"
-          if (entries[j].text.find(e.text) == 0) {
+          // Match by tool_call_id for reliable identification
+          if (!e.tool_call_id.empty() && entries[j].tool_call_id == e.tool_call_id) {
+            group.result = entries[j];
+            group.has_result = true;
+            break;
+          }
+          // Fallback to name matching for legacy entries without tool_call_id
+          if (e.tool_call_id.empty() && entries[j].tool_call_id.empty() && entries[j].text.find(e.text) == 0) {
             group.result = entries[j];
             group.has_result = true;
             break;
           }
         }
-        // Stop searching if we hit another ToolCall (means no result for this one yet)
-        if (entries[j].kind == EntryKind::ToolCall) break;
+        // Stop searching if we hit another ToolCall with the same name (means no result for this one yet)
+        // But don't stop for different tool names as results may be interleaved in parallel execution
+        if (entries[j].kind == EntryKind::ToolCall && e.tool_call_id.empty()) break;
       }
       bool expanded = state.tool_expanded.count(i) && state.tool_expanded[i];
 
@@ -362,10 +368,18 @@ Element build_chat_view(AppState& state) {
     if (e.kind == EntryKind::ToolResult) {
       // Check if this ToolResult was already paired with a ToolCall (search backward)
       bool already_paired = false;
-      for (size_t j = (i > 5 ? i - 5 : 0); j < i; ++j) {
-        if (entries[j].kind == EntryKind::ToolCall && e.text.find(entries[j].text) == 0) {
-          already_paired = true;
-          break;
+      for (size_t j = 0; j < i; ++j) {
+        if (entries[j].kind == EntryKind::ToolCall) {
+          // Match by tool_call_id for reliable identification
+          if (!e.tool_call_id.empty() && entries[j].tool_call_id == e.tool_call_id) {
+            already_paired = true;
+            break;
+          }
+          // Fallback to name matching for legacy entries without tool_call_id
+          if (e.tool_call_id.empty() && entries[j].tool_call_id.empty() && e.text.find(entries[j].text) == 0) {
+            already_paired = true;
+            break;
+          }
         }
       }
       if (already_paired) continue;  // 已配对的 ToolResult

@@ -85,22 +85,22 @@ std::vector<ChatEntry> ChatLog::filter(EntryKind kind) const {
   return result;
 }
 
-void ChatLog::add_nested_entry(const std::string& tool_name, ChatEntry nested_entry) {
+void ChatLog::add_nested_entry(const std::string& tool_call_id, ChatEntry nested_entry) {
   std::lock_guard<std::mutex> lock(mu_);
-  // Find the most recent ToolCall entry with matching tool name
+  // Find the ToolCall entry with matching tool_call_id
   for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
-    if (it->kind == EntryKind::ToolCall && it->text == tool_name) {
+    if (it->kind == EntryKind::ToolCall && it->tool_call_id == tool_call_id) {
       it->nested_entries.push_back(std::move(nested_entry));
       return;
     }
   }
 }
 
-void ChatLog::update_tool_activity(const std::string& tool_name, const std::string& activity) {
+void ChatLog::update_tool_activity(const std::string& tool_call_id, const std::string& activity) {
   std::lock_guard<std::mutex> lock(mu_);
-  // Find the most recent ToolCall entry with matching tool name and update its detail
+  // Find the ToolCall entry with matching tool_call_id and update its detail
   for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
-    if (it->kind == EntryKind::ToolCall && it->text == tool_name) {
+    if (it->kind == EntryKind::ToolCall && it->tool_call_id == tool_call_id) {
       // Store activity in a special format that renderer can parse
       // We'll append it to detail with a separator
       auto pos = it->detail.find("\n__ACTIVITY__:");

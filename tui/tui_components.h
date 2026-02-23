@@ -33,11 +33,10 @@ std::string to_string(EntryKind kind);
 
 struct ChatEntry {
   EntryKind kind;
-  std::string text;
-  std::string detail;  // 可选的额外信息 (args, result 等)
-
-  // Subagent nested entries (for TaskTool)
-  std::vector<ChatEntry> nested_entries;
+  std::string text;    // 主要文本内容
+  std::string detail;  // 额外详情 (如参数/结果)
+  std::string tool_call_id;  // Tool call ID for matching subagent events
+  std::vector<ChatEntry> nested_entries;  // Nested entries for subagent progress
 };
 
 // ============================================================
@@ -55,10 +54,10 @@ class ChatLog {
   std::vector<ChatEntry> filter(EntryKind kind) const;
 
   // Add nested entry to a tool call (for subagent progress)
-  void add_nested_entry(const std::string& tool_name, ChatEntry nested_entry);
+  void add_nested_entry(const std::string& tool_call_id, ChatEntry nested_entry);
 
   // Update activity status for a tool call (for subagent progress)
-  void update_tool_activity(const std::string& tool_name, const std::string& activity);
+  void update_tool_activity(const std::string& tool_call_id, const std::string& activity);
 
  private:
   mutable std::mutex mu_;
