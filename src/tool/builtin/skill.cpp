@@ -61,8 +61,20 @@ std::future<ToolResult> SkillTool::execute(const json& args, const ToolContext& 
       return ToolResult::error("Skill '" + name + "' not found. Available skills: " + (available.empty() ? "(none)" : available));
     }
 
-    // Return skill content wrapped in a skill_content tag
-    std::string output = "<skill_content name=\"" + skill->name + "\">\n" + skill->body + "\n</skill_content>";
+    // Skill directory is the parent of SKILL.md
+    auto skill_dir = skill->source_path.parent_path();
+    auto scripts_dir = skill_dir / "scripts";
+
+    // Return skill content wrapped in a skill_content tag, including path information
+    std::string output = "<skill_content name=\"" + skill->name + "\">\n";
+    output += "<skill_path>" + skill_dir.string() + "</skill_path>\n";
+
+    // Check if scripts directory exists
+    if (std::filesystem::exists(scripts_dir) && std::filesystem::is_directory(scripts_dir)) {
+      output += "<scripts_path>" + scripts_dir.string() + "</scripts_path>\n";
+    }
+
+    output += "\n" + skill->body + "\n</skill_content>";
 
     return ToolResult::with_title(output, "Loaded skill: " + skill->name);
   });
