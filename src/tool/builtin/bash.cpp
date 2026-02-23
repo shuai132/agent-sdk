@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -36,13 +38,18 @@ std::future<ToolResult> BashTool::execute(const json& args, const ToolContext& c
     std::string command = args.value("command", "");
     std::string workdir = args.value("workdir", ctx.working_dir);
     int timeout_ms = args.value("timeout", DEFAULT_TIMEOUT_MS);
+    std::string description = args.value("description", "");
 
     if (command.empty()) {
       return ToolResult::error("Command is required");
     }
 
+    spdlog::debug("[BashTool] Executing: command=\"{}\", workdir=\"{}\", timeout={}ms, description=\"{}\"", command, workdir, timeout_ms,
+                  description);
+
     // Check for abort
     if (ctx.abort_signal && ctx.abort_signal->load()) {
+      spdlog::warn("[BashTool] Execution cancelled");
       return ToolResult::error("Cancelled");
     }
 
@@ -183,8 +190,10 @@ std::future<ToolResult> BashTool::execute(const json& args, const ToolContext& c
     if (timed_out) {
       exit_code = 124;  // Convention: 124 indicates timeout (same as GNU timeout)
       output = result + "\n[Timed out after " + std::to_string(timeout_ms / 1000) + "s]";
+      spdlog::warn("[BashTool] Command timed out after {}s", timeout_ms / 1000);
     } else {
       output = result;
+      spdlog::debug("[BashTool] Command completed with exit code {}", exit_code);
     }
 #else
             // Windows implementation would go here
@@ -196,9 +205,12 @@ std::future<ToolResult> BashTool::execute(const json& args, const ToolContext& c
     auto truncated = Truncate::save_and_truncate(output, "bash");
 
     if (exit_code != 0) {
+      spdlog::debug("[BashTool] Command failed with exit code {}: {}", exit_code,
+                    truncated.content.substr(0, std::min(truncated.content.size(), size_t(200))));
       return ToolResult{truncated.content + "\n[Exit code: " + std::to_string(exit_code) + "]", "Command failed", {{"exit_code", exit_code}}, true};
     }
 
+    spdlog::debug("[BashTool] Command succeeded, output length: {} bytes", truncated.content.size());
     return ToolResult::with_title(truncated.content, "Executed: " + command.substr(0, 50));
   });
 }

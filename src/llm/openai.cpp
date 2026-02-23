@@ -162,8 +162,11 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   options.body = body.dump();
   options.headers = headers;
 
-  spdlog::debug("OpenAI request URL: {}/v1/chat/completions", base_url_);
-  spdlog::debug("OpenAI request body: {}", options.body);
+  spdlog::debug("[OpenAI] Request URL: {}/v1/chat/completions", base_url_);
+  spdlog::debug("[OpenAI] Request model: {}", request.model);
+  spdlog::debug("[OpenAI] Request messages count: {}", request.messages.size());
+  spdlog::debug("[OpenAI] Request tools count: {}", request.tools.size());
+  spdlog::debug("[OpenAI] Request body: {}", options.body);
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
   auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));
@@ -174,7 +177,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
       base_url_ + "/v1/chat/completions", options,
       [this, shared_callback, sse_buffer](const std::string& chunk) {
         // Accumulate chunk into SSE buffer and parse complete events
-        spdlog::debug("OpenAI SSE chunk received ({} bytes): {}", chunk.size(), chunk.substr(0, std::min(chunk.size(), size_t(200))));
+        spdlog::trace("[OpenAI] SSE chunk received ({} bytes): {}", chunk.size(), chunk.substr(0, std::min(chunk.size(), size_t(200))));
         *sse_buffer += chunk;
 
         // Process complete SSE events (ended by \n\n or \r\n\r\n)
@@ -207,7 +210,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
         }
       },
       [shared_callback, shared_complete](int status_code, const std::string& error) {
-        spdlog::debug("OpenAI stream completed: status={}, error={}", status_code, error.empty() ? "(none)" : error);
+        spdlog::debug("[OpenAI] Stream completed: status={}, error={}", status_code, error.empty() ? "(none)" : error);
         if (!error.empty()) {
           StreamError err;
           err.message = error;
@@ -219,6 +222,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
 
 void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& callback) {
   if (data == "[DONE]") {
+    spdlog::debug("[OpenAI] Received [DONE] signal, emitting {} remaining tool call(s)", tool_calls_.size());
     // Emit finish events for any remaining tool calls
     for (auto& [index, tc] : tool_calls_) {
       if (!tc.id.empty()) {
@@ -297,6 +301,7 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
     if (delta.contains("content") && !delta["content"].is_null()) {
       std::string text = delta["content"].get<std::string>();
       if (!text.empty()) {
+        spdlog::trace("[OpenAI] Text delta: {}", text);
         callback(TextDelta{text});
       }
     }
@@ -314,6 +319,7 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
             name = tc["function"]["name"].get<std::string>();
           }
           tool_calls_[index] = ToolCallInfo{id, name, ""};
+          spdlog::debug("[OpenAI] New tool call: id={}, name={}, index={}", id, name, index);
           callback(ToolCallDelta{id, name, ""});
         }
 
@@ -321,6 +327,7 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
         if (tc.contains("function") && tc["function"].contains("arguments")) {
           std::string args_delta = tc["function"]["arguments"].get<std::string>();
           if (!args_delta.empty() && tool_calls_.count(index)) {
+            spdlog::trace("[OpenAI] Tool call arguments delta (index={}): {}", index, args_delta);
             tool_calls_[index].args_json += args_delta;
             callback(ToolCallDelta{tool_calls_[index].id, tool_calls_[index].name, args_delta});
           }

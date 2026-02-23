@@ -1,5 +1,7 @@
 #include "tool.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -70,6 +72,7 @@ ToolRegistry& ToolRegistry::instance() {
 }
 
 void ToolRegistry::register_tool(std::shared_ptr<Tool> tool) {
+  spdlog::debug("[ToolRegistry] Registered tool: {}", tool->id());
   std::lock_guard lock(mutex_);
   tools_[tool->id()] = std::move(tool);
 }
@@ -77,14 +80,17 @@ void ToolRegistry::register_tool(std::shared_ptr<Tool> tool) {
 void ToolRegistry::unregister_tool(const std::string& id) {
   std::lock_guard lock(mutex_);
   tools_.erase(id);
+  spdlog::debug("[ToolRegistry] Unregistered tool: {}", id);
 }
 
 std::shared_ptr<Tool> ToolRegistry::get(const std::string& id) const {
   std::lock_guard lock(mutex_);
   auto it = tools_.find(id);
   if (it != tools_.end()) {
+    spdlog::debug("[ToolRegistry] Got tool: {}", id);
     return it->second;
   }
+  spdlog::debug("[ToolRegistry] Tool not found: {}", id);
   return nullptr;
 }
 
@@ -102,6 +108,8 @@ std::vector<std::shared_ptr<Tool>> ToolRegistry::for_agent(const AgentConfig& ag
   auto all_tools = all();
   std::vector<std::shared_ptr<Tool>> result;
 
+  spdlog::debug("[ToolRegistry] Filtering tools for agent (allowed: {}, denied: {})", agent.allowed_tools.size(), agent.denied_tools.size());
+
   for (const auto& tool : all_tools) {
     bool allowed = true;
 
@@ -109,6 +117,7 @@ std::vector<std::shared_ptr<Tool>> ToolRegistry::for_agent(const AgentConfig& ag
     for (const auto& denied : agent.denied_tools) {
       if (tool->id() == denied) {
         allowed = false;
+        spdlog::debug("[ToolRegistry] Tool {} denied by config", tool->id());
         break;
       }
     }
@@ -122,6 +131,9 @@ std::vector<std::shared_ptr<Tool>> ToolRegistry::for_agent(const AgentConfig& ag
           break;
         }
       }
+      if (!allowed) {
+        spdlog::debug("[ToolRegistry] Tool {} not in allowed list", tool->id());
+      }
     }
 
     if (allowed) {
@@ -129,6 +141,7 @@ std::vector<std::shared_ptr<Tool>> ToolRegistry::for_agent(const AgentConfig& ag
     }
   }
 
+  spdlog::debug("[ToolRegistry] Returning {} tools for agent", result.size());
   return result;
 }
 

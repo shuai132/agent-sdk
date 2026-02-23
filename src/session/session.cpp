@@ -184,6 +184,7 @@ void Session::prompt(const std::string& text) {
 }
 
 void Session::prompt(Message user_msg) {
+  spdlog::debug("[Session {}] User input: {}", id_, user_msg.text());
   add_message(std::move(user_msg));
   run_loop();
 }
@@ -209,11 +210,15 @@ void Session::run_loop() {
   abort_signal_->store(false);
   state_ = SessionState::Running;
 
+  spdlog::debug("[Session {}] Starting run loop", id_);
+
   int step = 0;
   const int max_steps = 100;  // Prevent infinite loops
 
   while (!abort_signal_->load() && step < max_steps) {
     step++;
+
+    spdlog::debug("[Session {}] Step {} - State: {}", id_, step, to_string(state_));
 
     auto context_msgs = get_context_messages();
 
@@ -238,22 +243,26 @@ void Session::run_loop() {
 
     // Check for context overflow
     if (needs_compaction()) {
+      spdlog::debug("[Session {}] Context needs compaction, triggering...", id_);
       handle_compaction();
       continue;
     }
 
     // If we have pending tool calls, execute them first
     if (last_assistant && last_assistant->finish_reason() == FinishReason::ToolCalls) {
+      spdlog::debug("[Session {}] Executing pending tool calls", id_);
       execute_tool_calls();
     }
 
     // Process LLM - get next response
+    spdlog::debug("[Session {}] Processing LLM stream", id_);
     process_stream();
 
     // Check if the new response has tool calls
     if (!messages_.empty() && messages_.back().role() == Role::Assistant) {
       auto& new_assistant = messages_.back();
       if (new_assistant.finish_reason() == FinishReason::ToolCalls) {
+        spdlog::debug("[Session {}] LLM response contains tool calls, executing...", id_);
         execute_tool_calls();
       }
     }
@@ -261,8 +270,10 @@ void Session::run_loop() {
 
   if (abort_signal_->load()) {
     state_ = SessionState::Cancelled;
+    spdlog::debug("[Session {}] Session cancelled", id_);
   } else {
     state_ = SessionState::Completed;
+    spdlog::debug("[Session {}] Session completed", id_);
   }
 
   // Prune old outputs
@@ -296,6 +307,8 @@ void Session::process_stream() {
     request.tools.push_back(tool);
   }
 
+  spdlog::debug("[Session {}] LLM request: model={}, messages={}, tools={}", id_, request.model, request.messages.size(), request.tools.size());
+
   // Use streaming API for real-time output
   std::promise<void> stream_complete;
   auto stream_future = stream_complete.get_future();
@@ -327,6 +340,7 @@ void Session::process_stream() {
                   on_stream_(e.text);
                 }
                 accumulated_text += e.text;
+                spdlog::trace("[Session {}] Text delta: {}", id_, e.text);
               } else if constexpr (std::is_same_v<T, llm::ToolCallDelta>) {
                 // Find existing builder by id and accumulate, or create new
                 bool found_builder = false;
@@ -340,6 +354,7 @@ void Session::process_stream() {
                   }
                 }
                 if (!found_builder) {
+                  spdlog::debug("[Session {}] New tool call builder: id={}, name={}", id_, e.id, e.name);
                   tool_call_builders.push_back({e.id, e.name, e.arguments_delta});
                 }
               } else if constexpr (std::is_same_v<T, llm::ToolCallComplete>) {
@@ -350,6 +365,8 @@ void Session::process_stream() {
                   if (!e.id.empty() && builder.id == e.id) {
                     // Update with complete args
                     builder.args_json = e.arguments.dump();
+
+                    spdlog::debug("[Session {}] Tool call complete: name={}, args={}", id_, builder.name, e.arguments.dump());
 
                     if (on_tool_call_) {
                       on_tool_call_(builder.name, e.arguments);
@@ -362,6 +379,7 @@ void Session::process_stream() {
                 // Handle case where we get ToolCallComplete without a prior ToolCallDelta
                 if (!found && !e.id.empty()) {
                   tool_call_builders.push_back({e.id, e.name, e.arguments.dump()});
+                  spdlog::debug("[Session {}] Tool call complete (no prior delta): name={}, args={}", id_, e.name, e.arguments.dump());
                   if (on_tool_call_) {
                     on_tool_call_(e.name, e.arguments);
                   }
@@ -370,6 +388,8 @@ void Session::process_stream() {
               } else if constexpr (std::is_same_v<T, llm::FinishStep>) {
                 finish_reason = e.reason;
                 usage = e.usage;
+                spdlog::debug("[Session {}] LLM finish step: reason={}, input_tokens={}, output_tokens={}", id_, to_string(finish_reason),
+                              usage.input_tokens, usage.output_tokens);
               } else if constexpr (std::is_same_v<T, llm::StreamError>) {
                 error_message = e.message;
               }
@@ -378,6 +398,7 @@ void Session::process_stream() {
       },
       [&stream_complete]() {
         stream_complete.set_value();
+        spdlog::debug("[Session {}] LLM stream completed", static_cast<void*>(&stream_complete));
       });
 
   // Wait for stream to complete
@@ -385,6 +406,7 @@ void Session::process_stream() {
 
   // Check for errors
   if (error_message) {
+    spdlog::error("[Session {}] LLM stream error: {}", id_, *error_message);
     if (on_error_) {
       on_error_(*error_message);
     }
@@ -397,6 +419,7 @@ void Session::process_stream() {
 
   // Add accumulated text
   if (!accumulated_text.empty()) {
+    spdlog::debug("[Session {}] LLM response text: {} chars", id_, accumulated_text.size());
     msg.add_text(accumulated_text);
   }
 
@@ -408,9 +431,11 @@ void Session::process_stream() {
         spdlog::warn("Tool call args is not an object for {}, skipping", builder.name);
         continue;
       }
+      spdlog::debug("[Session {}] Adding tool call: name={}, args={}", id_, builder.name, args.dump());
       msg.add_tool_call(builder.id, builder.name, args);
     } catch (...) {
       // Skip invalid tool calls
+      spdlog::warn("[Session {}] Failed to parse tool call args for {}", id_, builder.name);
     }
   }
 
@@ -435,6 +460,8 @@ void Session::execute_tool_calls() {
   auto tool_calls = last_msg.tool_calls();
   if (tool_calls.empty()) return;
 
+  spdlog::debug("[Session {}] Executing {} tool call(s)", id_, tool_calls.size());
+
   state_ = SessionState::WaitingForTool;
 
   // Create user message for tool results
@@ -443,15 +470,18 @@ void Session::execute_tool_calls() {
   for (auto* tc : tool_calls) {
     if (tc->completed) continue;
 
+    spdlog::debug("[Session {}] Executing tool call: name={}, args={}", id_, tc->name, tc->arguments.dump());
+
     // Check for doom loop
     if (detect_doom_loop(tc->name, tc->arguments)) {
       // Would need permission check here
-      spdlog::warn("Potential doom loop detected for tool: {}", tc->name);
+      spdlog::warn("[Session {}] Potential doom loop detected for tool: {}", id_, tc->name);
     }
 
     // Get tool
     auto tool = ToolRegistry::instance().get(tc->name);
     if (!tool) {
+      spdlog::error("[Session {}] Tool not found: {}", id_, tc->name);
       result_msg.add_tool_result(tc->id, tc->name, "Tool not found: " + tc->name, true);
       tc->completed = true;
       continue;
@@ -460,7 +490,7 @@ void Session::execute_tool_calls() {
     // Check permission
     auto perm = PermissionManager::instance().check_permission(tc->name, agent_config_);
     if (perm == Permission::Deny) {
-      spdlog::info("Permission denied for tool: {}", tc->name);
+      spdlog::info("[Session {}] Permission denied for tool: {}", id_, tc->name);
       result_msg.add_tool_result(tc->id, tc->name, "Permission denied: tool '" + tc->name + "' is not allowed", true);
       tc->completed = true;
       continue;
@@ -477,7 +507,7 @@ void Session::execute_tool_calls() {
         }
       }
       if (!allowed) {
-        spdlog::info("User denied permission for tool: {}", tc->name);
+        spdlog::info("[Session {}] User denied permission for tool: {}", id_, tc->name);
         PermissionManager::instance().deny(tc->name);
         result_msg.add_tool_result(tc->id, tc->name, "Permission denied: tool '" + tc->name + "' is not allowed", true);
         tc->completed = true;
@@ -505,8 +535,11 @@ void Session::execute_tool_calls() {
     tc->started = true;
 
     try {
+      spdlog::debug("[Session {}] Calling tool: {} with args: {}", id_, tc->name, tc->arguments.dump());
       auto future_result = tool->execute(tc->arguments, ctx);
       auto result = future_result.get();
+
+      spdlog::debug("[Session {}] Tool {} completed, is_error={}, output length={}", id_, tc->name, result.is_error, result.output.size());
 
       // Truncate if needed
       auto truncated = Truncate::save_and_truncate(result.output, tc->name);
@@ -525,6 +558,7 @@ void Session::execute_tool_calls() {
 
     } catch (const std::exception& e) {
       std::string error_msg = std::string("Error: ") + e.what();
+      spdlog::error("[Session {}] Tool {} exception: {}", id_, tc->name, e.what());
       result_msg.add_tool_result(tc->id, tc->name, error_msg, true);
 
       // Notify tool result callback
@@ -537,6 +571,8 @@ void Session::execute_tool_calls() {
 
     tc->completed = true;
 
+    spdlog::debug("[Session {}] Tool call completed: {}", id_, tc->name);
+
     // Track for doom loop detection
     recent_tool_calls_.push_back({tc->name, tc->arguments.dump()});
     if (recent_tool_calls_.size() > 10) {
@@ -546,6 +582,7 @@ void Session::execute_tool_calls() {
 
   // Add tool results
   if (!result_msg.tool_results().empty()) {
+    spdlog::debug("[Session {}] Adding {} tool result(s) to messages", id_, result_msg.tool_results().size());
     add_message(std::move(result_msg));
   }
 

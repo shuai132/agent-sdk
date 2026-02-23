@@ -5,6 +5,7 @@
 
 #include "core/version.hpp"
 #include "llm/anthropic.hpp"
+#include "log/log.h"
 #include "mcp/client.hpp"
 #include "plugin/qwen/qwen_oauth.hpp"
 #include "skill/skill.hpp"
@@ -23,6 +24,9 @@ void force_provider_registration() {
 }  // namespace
 
 void init() {
+  // 初始化日志系统
+  init_log();
+
   force_provider_registration();
   tools::register_builtins();
 

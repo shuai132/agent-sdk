@@ -127,6 +127,12 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
   options.body = body.dump();
   options.headers = headers;
 
+  spdlog::debug("[Anthropic] Request URL: {}/v1/messages", base_url_);
+  spdlog::debug("[Anthropic] Request model: {}", request.model);
+  spdlog::debug("[Anthropic] Request messages count: {}", request.messages.size());
+  spdlog::debug("[Anthropic] Request tools count: {}", request.tools.size());
+  spdlog::debug("[Anthropic] Request body: {}", options.body);
+
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
   auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));
   auto sse_buffer = std::make_shared<std::string>();
@@ -179,6 +185,7 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
 
 void AnthropicProvider::parse_sse_event(const std::string& data, StreamCallback& callback) {
   if (data == "[DONE]") {
+    spdlog::debug("[Anthropic] Received [DONE] signal");
     return;
   }
 
@@ -186,17 +193,23 @@ void AnthropicProvider::parse_sse_event(const std::string& data, StreamCallback&
     auto j = json::parse(data);
     std::string type = j.value("type", "");
 
+    spdlog::trace("[Anthropic] SSE event type: {}", type);
+
     if (type == "content_block_delta") {
       auto delta = j["delta"];
       std::string delta_type = delta.value("type", "");
 
       if (delta_type == "text_delta") {
+        std::string text = delta["text"].get<std::string>();
+        spdlog::trace("[Anthropic] Text delta: {}", text);
         callback(TextDelta{delta["text"]});
       } else if (delta_type == "input_json_delta") {
         // Accumulate tool call arguments
         int index = j.value("index", 0);
+        std::string partial_json = delta.value("partial_json", "");
         if (tool_calls_.count(index)) {
-          tool_calls_[index].args_json += delta.value("partial_json", "");
+          spdlog::trace("[Anthropic] Tool call arguments delta (index={}): {}", index, partial_json);
+          tool_calls_[index].args_json += partial_json;
         }
       }
     } else if (type == "content_block_start") {
@@ -210,6 +223,7 @@ void AnthropicProvider::parse_sse_event(const std::string& data, StreamCallback&
 
         // Store tool call info by index
         tool_calls_[index] = ToolCallInfo{id, name, ""};
+        spdlog::debug("[Anthropic] New tool call: id={}, name={}, index={}", id, name, index);
 
         callback(ToolCallDelta{id, name, ""});
       }

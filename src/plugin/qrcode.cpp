@@ -57,7 +57,8 @@ std::string QrCode::encode(const std::string& text) {
 
   // 选择最小版本
   int version = 1;
-  for (; version <= 10 && text.length() > CAPACITY[version]; ++version);
+  for (; version <= 10 && text.length() > CAPACITY[version]; ++version)
+    ;
   if (version > 10) return "[Text too long for QR code]";
 
   // 生成 QR 码

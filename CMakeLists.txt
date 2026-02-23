@@ -75,6 +75,9 @@ add_library(${AGENT_SDK_NAME}
         src/core/json_store.cpp
         src/core/uuid.cpp
 
+        # Log
+        src/log/log.cpp
+
         # Event bus
         src/bus/bus.cpp
 
