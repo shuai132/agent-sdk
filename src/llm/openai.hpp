@@ -40,6 +40,9 @@ class OpenAIProvider : public Provider {
     std::string args_json;
   };
   std::map<int, ToolCallInfo> tool_calls_;
+
+  // Track finish reason for streaming (some APIs send finish_reason before [DONE])
+  FinishReason finish_reason_ = FinishReason::Stop;
 };
 
 }  // namespace agent::llm

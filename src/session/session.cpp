@@ -343,6 +343,7 @@ void Session::process_stream() {
                 spdlog::trace("[Session {}] Text delta: {}", id_, e.text);
               } else if constexpr (std::is_same_v<T, llm::ToolCallDelta>) {
                 // Find existing builder by id and accumulate, or create new
+                // Only create new builder if id is non-empty (first delta has the real id)
                 bool found_builder = false;
                 if (!e.id.empty()) {
                   for (auto& builder : tool_call_builders) {
@@ -352,11 +353,13 @@ void Session::process_stream() {
                       break;
                     }
                   }
+                  if (!found_builder) {
+                    spdlog::debug("[Session {}] New tool call builder: id={}, name={}", id_, e.id, e.name);
+                    tool_call_builders.push_back({e.id, e.name, e.arguments_delta});
+                  }
                 }
-                if (!found_builder) {
-                  spdlog::debug("[Session {}] New tool call builder: id={}, name={}", id_, e.id, e.name);
-                  tool_call_builders.push_back({e.id, e.name, e.arguments_delta});
-                }
+                // If id is empty, this is a continuation delta - ignore it as OpenAI provider
+                // handles accumulation internally and will send ToolCallComplete with full args
               } else if constexpr (std::is_same_v<T, llm::ToolCallComplete>) {
                 // Tool call arguments completed
                 // Find matching builder by id and update with complete args

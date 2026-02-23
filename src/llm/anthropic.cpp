@@ -184,6 +184,7 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
 }
 
 void AnthropicProvider::parse_sse_event(const std::string& data, StreamCallback& callback) {
+  spdlog::debug("[Anthropic] parse_sse_event: {}", data);
   if (data == "[DONE]") {
     spdlog::debug("[Anthropic] Received [DONE] signal");
     return;

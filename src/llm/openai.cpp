@@ -156,6 +156,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
 
   // Reset state
   tool_calls_.clear();
+  finish_reason_ = FinishReason::Stop;
 
   net::HttpOptions options;
   options.method = "POST";
@@ -166,7 +167,13 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   spdlog::debug("[OpenAI] Request model: {}", request.model);
   spdlog::debug("[OpenAI] Request messages count: {}", request.messages.size());
   spdlog::debug("[OpenAI] Request tools count: {}", request.tools.size());
-  spdlog::debug("[OpenAI] Request body: {}", options.body);
+  // Log first few messages for debugging
+  auto body_json = json::parse(options.body);
+  if (body_json.contains("messages")) {
+    for (size_t i = 0; i < std::min(body_json["messages"].size(), size_t(3)); i++) {
+      spdlog::debug("[OpenAI] Message[{}]: {}", i, body_json["messages"][i].dump());
+    }
+  }
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
   auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));
@@ -221,6 +228,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
 }
 
 void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& callback) {
+  spdlog::debug("[OpenAI] parse_sse_event: {}", data);
   if (data == "[DONE]") {
     spdlog::debug("[OpenAI] Received [DONE] signal, emitting {} remaining tool call(s)", tool_calls_.size());
     // Emit finish events for any remaining tool calls
@@ -237,8 +245,9 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
 
     // Emit FinishStep if not already emitted via usage chunk
     // This handles APIs (like Qwen Portal) that don't send usage info
+    // Use tracked finish_reason_ which was set when we received finish_reason in the stream
     FinishStep finish;
-    finish.reason = tool_calls_.empty() ? FinishReason::Stop : FinishReason::ToolCalls;
+    finish.reason = finish_reason_;
     callback(finish);
 
     tool_calls_.clear();
@@ -311,16 +320,19 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
       for (const auto& tc : delta["tool_calls"]) {
         int index = tc.value("index", 0);
 
-        // New tool call starts with id and function name
+        // New tool call starts with non-empty id and function name
         if (tc.contains("id") && !tc["id"].is_null()) {
           std::string id = tc["id"].get<std::string>();
-          std::string name;
-          if (tc.contains("function") && tc["function"].contains("name")) {
-            name = tc["function"]["name"].get<std::string>();
+          // Only create new tool call if id is not empty (first chunk has the real id)
+          if (!id.empty()) {
+            std::string name;
+            if (tc.contains("function") && tc["function"].contains("name")) {
+              name = tc["function"]["name"].get<std::string>();
+            }
+            tool_calls_[index] = ToolCallInfo{id, name, ""};
+            spdlog::debug("[OpenAI] New tool call: id={}, name={}, index={}", id, name, index);
+            callback(ToolCallDelta{id, name, ""});
           }
-          tool_calls_[index] = ToolCallInfo{id, name, ""};
-          spdlog::debug("[OpenAI] New tool call: id={}, name={}, index={}", id, name, index);
-          callback(ToolCallDelta{id, name, ""});
         }
 
         // Accumulate function arguments
@@ -337,6 +349,15 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
 
     // Handle finish reason when no usage is present (non-stream_options mode)
     if (!finish_reason.empty()) {
+      // Track finish reason for later use in [DONE] handler
+      if (finish_reason == "tool_calls") {
+        finish_reason_ = FinishReason::ToolCalls;
+      } else if (finish_reason == "length") {
+        finish_reason_ = FinishReason::Length;
+      } else {
+        finish_reason_ = FinishReason::Stop;
+      }
+
       // If tool calls are pending, emit ToolCallComplete for each
       if (finish_reason == "tool_calls") {
         for (auto& [index, tc] : tool_calls_) {

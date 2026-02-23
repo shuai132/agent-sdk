@@ -209,32 +209,53 @@ json Message::to_api_format() const {
   json msg;
   msg["role"] = to_string(role_);
 
-  // Collect content
-  json content = json::array();
+  // Collect text content (OpenAI format)
+  std::string text_content;
+  bool has_tool_calls = false;
 
   for (const auto& part : parts_) {
     if (auto* text = std::get_if<TextPart>(&part)) {
-      content.push_back({{"type", "text"}, {"text", text->text}});
+      if (!text_content.empty()) {
+        text_content += "\n";
+      }
+      text_content += text->text;
     } else if (auto* tc = std::get_if<ToolCallPart>(&part)) {
       // Tool calls go into a separate field in the message
+      has_tool_calls = true;
       if (!msg.contains("tool_calls")) {
         msg["tool_calls"] = json::array();
       }
       msg["tool_calls"].push_back({{"id", tc->id}, {"type", "function"}, {"function", {{"name", tc->name}, {"arguments", tc->arguments.dump()}}}});
-    } else if (auto* tr = std::get_if<ToolResultPart>(&part)) {
-      // Tool results are separate messages in OpenAI format
-      // but we include them here for completeness
-      content.push_back({{"type", "tool_result"}, {"tool_use_id", tr->tool_call_id}, {"content", tr->output}, {"is_error", tr->is_error}});
     } else if (auto* img = std::get_if<ImagePart>(&part)) {
-      content.push_back({{"type", "image_url"}, {"image_url", {{"url", img->url}}}});
+      // For images, we need to use array format
+      if (!msg.contains("content") || !msg["content"].is_array()) {
+        json content_array = json::array();
+        if (!text_content.empty()) {
+          content_array.push_back({{"type", "text"}, {"text", text_content}});
+          text_content.clear();
+        }
+        msg["content"] = content_array;
+      }
+      msg["content"].push_back({{"type", "image_url"}, {"image_url", {{"url", img->url}}}});
     }
+    // Note: ToolResultPart is handled separately in to_openai_format() as role="tool" messages
   }
 
-  // If only text content, simplify to string
-  if (content.size() == 1 && content[0]["type"] == "text") {
-    msg["content"] = content[0]["text"];
-  } else if (!content.empty()) {
-    msg["content"] = content;
+  // Set content field
+  if (msg.contains("content") && msg["content"].is_array()) {
+    // Already has array content (from images), add remaining text if any
+    if (!text_content.empty()) {
+      // Insert text at beginning
+      json text_part = {{"type", "text"}, {"text", text_content}};
+      msg["content"].insert(msg["content"].begin(), text_part);
+    }
+  } else if (!text_content.empty()) {
+    // Simple string content
+    msg["content"] = text_content;
+  } else if (has_tool_calls) {
+    // OpenAI requires content field for assistant messages with tool_calls
+    // Content should be null or empty string
+    msg["content"] = nullptr;
   }
 
   return msg;
