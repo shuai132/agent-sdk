@@ -651,8 +651,15 @@ std::future<HttpResponse> HttpClient::request(const std::string& url, const Http
     auto is_retryable = [](const HttpResponse& resp) -> bool {
       // Connection/timeout errors (status_code == 0 means no HTTP response received)
       if (resp.status_code == 0) return true;
-      // 429 Too Many Requests
-      if (resp.status_code == 429) return true;
+      // 429 Too Many Requests — but not for quota exhaustion
+      if (resp.status_code == 429) {
+        // Check if this is a quota exhaustion error (not retryable)
+        if (resp.body.find("insufficient_quota") != std::string::npos) return false;
+        if (resp.body.find("quota_exceeded") != std::string::npos) return false;
+        if (resp.body.find("billing") != std::string::npos) return false;
+        // Rate limit errors are retryable
+        return true;
+      }
       // 5xx server errors worth retrying
       if (resp.status_code == 500 || resp.status_code == 502 || resp.status_code == 503 || resp.status_code == 504) return true;
       return false;

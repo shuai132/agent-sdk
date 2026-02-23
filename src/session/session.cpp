@@ -215,7 +215,7 @@ void Session::run_loop() {
   int step = 0;
   const int max_steps = 100;  // Prevent infinite loops
 
-  while (!abort_signal_->load() && step < max_steps) {
+  while (!abort_signal_->load() && step < max_steps && state_ != SessionState::Failed) {
     step++;
 
     spdlog::debug("[Session {}] Step {} - State: {}", id_, step, to_string(state_));
@@ -271,6 +271,9 @@ void Session::run_loop() {
   if (abort_signal_->load()) {
     state_ = SessionState::Cancelled;
     spdlog::debug("[Session {}] Session cancelled", id_);
+  } else if (state_ == SessionState::Failed) {
+    // Keep Failed state, already set by process_stream()
+    spdlog::debug("[Session {}] Session failed", id_);
   } else {
     state_ = SessionState::Completed;
     spdlog::debug("[Session {}] Session completed", id_);

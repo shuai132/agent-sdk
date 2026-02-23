@@ -157,6 +157,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   // Reset state
   tool_calls_.clear();
   finish_reason_ = FinishReason::Stop;
+  in_thinking_block_ = false;
 
   net::HttpOptions options;
   options.method = "POST";
@@ -310,8 +311,68 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
     if (delta.contains("content") && !delta["content"].is_null()) {
       std::string text = delta["content"].get<std::string>();
       if (!text.empty()) {
-        spdlog::trace("[OpenAI] Text delta: {}", text);
-        callback(TextDelta{text});
+        // Handle <think>...</think> tags in content (DeepSeek style)
+        // Filter out these tags and their content from the normal output
+        // They should have been handled via reasoning_content, but some models embed them in content
+        std::string filtered_text;
+        size_t pos = 0;
+        while (pos < text.size()) {
+          // Look for <think> tag
+          size_t think_start = text.find("<think>", pos);
+          if (think_start == std::string::npos) {
+            // No more <think> tags, append the rest
+            filtered_text += text.substr(pos);
+            break;
+          }
+          // Append text before <think>
+          if (think_start > pos) {
+            filtered_text += text.substr(pos, think_start - pos);
+          }
+          // Look for </think> tag
+          size_t think_end = text.find("</think>", think_start);
+          if (think_end == std::string::npos) {
+            // No closing tag, skip to end
+            // The thinking content between <think> and end will be sent as ThinkingDelta
+            std::string thinking_content = text.substr(think_start + 7);  // 7 = len("<think>")
+            if (!thinking_content.empty()) {
+              in_thinking_block_ = true;
+              callback(ThinkingDelta{thinking_content});
+            }
+            break;
+          }
+          // Extract thinking content
+          std::string thinking_content = text.substr(think_start + 7, think_end - think_start - 7);
+          if (!thinking_content.empty()) {
+            callback(ThinkingDelta{thinking_content});
+          }
+          in_thinking_block_ = false;
+          pos = think_end + 8;  // 8 = len("</think>")
+        }
+
+        // Also handle standalone </think> tag (closing a block started in previous chunk)
+        if (in_thinking_block_) {
+          size_t close_tag = filtered_text.find("</think>");
+          if (close_tag != std::string::npos) {
+            // Content before </think> is thinking
+            std::string thinking_content = filtered_text.substr(0, close_tag);
+            if (!thinking_content.empty()) {
+              callback(ThinkingDelta{thinking_content});
+            }
+            filtered_text = filtered_text.substr(close_tag + 8);
+            in_thinking_block_ = false;
+          } else {
+            // Still in thinking block, all content is thinking
+            if (!filtered_text.empty()) {
+              callback(ThinkingDelta{filtered_text});
+              filtered_text.clear();
+            }
+          }
+        }
+
+        if (!filtered_text.empty()) {
+          spdlog::trace("[OpenAI] Text delta: {}", filtered_text);
+          callback(TextDelta{filtered_text});
+        }
       }
     }
 

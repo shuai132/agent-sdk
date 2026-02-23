@@ -233,9 +233,19 @@ Element build_chat_view(AppState& state) {
     if (e.kind == EntryKind::ToolCall) {
       ToolGroup group;
       group.call = e;
-      if (i + 1 < entries.size() && entries[i + 1].kind == EntryKind::ToolResult) {
-        group.result = entries[i + 1];
-        group.has_result = true;
+      // Search forward for matching ToolResult (may not be immediately next due to Thinking entries)
+      for (size_t j = i + 1; j < entries.size() && j < i + 5; ++j) {
+        if (entries[j].kind == EntryKind::ToolResult) {
+          // Check if tool names match (ToolResult.text contains tool name)
+          // ToolCall.text is the tool name, ToolResult.text is "tool_name ✓" or "tool_name ✗"
+          if (entries[j].text.find(e.text) == 0) {
+            group.result = entries[j];
+            group.has_result = true;
+            break;
+          }
+        }
+        // Stop searching if we hit another ToolCall (means no result for this one yet)
+        if (entries[j].kind == EntryKind::ToolCall) break;
       }
       bool expanded = state.tool_expanded.count(i) && state.tool_expanded[i];
 
@@ -250,8 +260,16 @@ Element build_chat_view(AppState& state) {
       continue;
     }
 
-    if (e.kind == EntryKind::ToolResult && i > 0 && entries[i - 1].kind == EntryKind::ToolCall) {
-      continue;  // 已配对的 ToolResult
+    if (e.kind == EntryKind::ToolResult) {
+      // Check if this ToolResult was already paired with a ToolCall (search backward)
+      bool already_paired = false;
+      for (size_t j = (i > 5 ? i - 5 : 0); j < i; ++j) {
+        if (entries[j].kind == EntryKind::ToolCall && e.text.find(entries[j].text) == 0) {
+          already_paired = true;
+          break;
+        }
+      }
+      if (already_paired) continue;  // 已配对的 ToolResult
     }
 
     chat_elements.push_back(render_text_entry(e));

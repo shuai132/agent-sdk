@@ -43,6 +43,9 @@ class OpenAIProvider : public Provider {
 
   // Track finish reason for streaming (some APIs send finish_reason before [DONE])
   FinishReason finish_reason_ = FinishReason::Stop;
+
+  // Track whether we're inside a <think>...</think> block in content
+  bool in_thinking_block_ = false;
 };
 
 }  // namespace agent::llm
