@@ -38,6 +38,19 @@ Element render_text_entry(const ChatEntry& entry) {
       });
     }
 
+    case EntryKind::Thinking: {
+      auto lines = split_lines(entry.text);
+      Elements content;
+      for (const auto& line : lines) {
+        content.push_back(paragraph(line));
+      }
+      return vbox({
+          hbox({text("  💭 ") | dim, text("Thinking") | dim | italic}),
+          hbox({text("    "), vbox(content) | dim}) | flex,
+          text(""),
+      });
+    }
+
     case EntryKind::SubtaskStart:
       return hbox({
           text("    ◈ Subtask: ") | color(Color::Magenta) | bold,

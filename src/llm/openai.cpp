@@ -315,6 +315,15 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
       }
     }
 
+    // Parse reasoning content (Qwen/DeepSeek/OpenAI o1 style thinking)
+    if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
+      std::string thinking = delta["reasoning_content"].get<std::string>();
+      if (!thinking.empty()) {
+        spdlog::trace("[OpenAI] Thinking delta: {}", thinking);
+        callback(ThinkingDelta{thinking});
+      }
+    }
+
     // Parse tool call deltas
     if (delta.contains("tool_calls")) {
       for (const auto& tc : delta["tool_calls"]) {

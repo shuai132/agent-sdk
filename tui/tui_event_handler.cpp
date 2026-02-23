@@ -135,6 +135,9 @@ void handle_submit(AppState& state, AppContext& ctx, ScreenInteractive& screen) 
           case EntryKind::AssistantText:
             oss << "AI:\n" << e.text << "\n\n";
             break;
+          case EntryKind::Thinking:
+            oss << "AI Thinking:\n" << e.text << "\n\n";
+            break;
           case EntryKind::ToolCall:
             oss << "Tool Call: " << e.text << "\n";
             if (!e.detail.empty()) {

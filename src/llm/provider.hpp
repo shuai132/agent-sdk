@@ -21,6 +21,10 @@ struct TextDelta {
   std::string text;
 };
 
+struct ThinkingDelta {
+  std::string text;  // Partial thinking/reasoning content
+};
+
 struct ToolCallDelta {
   std::string id;
   std::string name;
@@ -43,7 +47,7 @@ struct StreamError {
   bool retryable = false;
 };
 
-using StreamEvent = std::variant<TextDelta, ToolCallDelta, ToolCallComplete, FinishStep, StreamError>;
+using StreamEvent = std::variant<TextDelta, ThinkingDelta, ToolCallDelta, ToolCallComplete, FinishStep, StreamError>;
 
 // Stream callback
 using StreamCallback = std::function<void(const StreamEvent&)>;

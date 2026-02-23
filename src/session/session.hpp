@@ -99,6 +99,7 @@ class Session : public std::enable_shared_from_this<Session> {
   // Event callbacks
   using OnMessageCallback = std::function<void(const Message&)>;
   using OnStreamCallback = std::function<void(const std::string& text)>;
+  using OnThinkingCallback = std::function<void(const std::string& thinking)>;
   using OnToolCallCallback = std::function<void(const std::string& tool, const json& args)>;
   using OnToolResultCallback = std::function<void(const std::string& tool, const std::string& result, bool is_error)>;
   using OnCompleteCallback = std::function<void(FinishReason)>;
@@ -110,6 +111,10 @@ class Session : public std::enable_shared_from_this<Session> {
 
   void on_stream(OnStreamCallback cb) {
     on_stream_ = std::move(cb);
+  }
+
+  void on_thinking(OnThinkingCallback cb) {
+    on_thinking_ = std::move(cb);
   }
 
   void on_tool_call(OnToolCallCallback cb) {
@@ -191,6 +196,7 @@ class Session : public std::enable_shared_from_this<Session> {
   // Callbacks
   OnMessageCallback on_message_;
   OnStreamCallback on_stream_;
+  OnThinkingCallback on_thinking_;
   OnToolCallCallback on_tool_call_;
   OnToolResultCallback on_tool_result_;
   OnCompleteCallback on_complete_;

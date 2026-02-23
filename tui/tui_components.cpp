@@ -19,6 +19,8 @@ std::string to_string(EntryKind kind) {
       return "UserMsg";
     case EntryKind::AssistantText:
       return "AssistantText";
+    case EntryKind::Thinking:
+      return "Thinking";
     case EntryKind::ToolCall:
       return "ToolCall";
     case EntryKind::ToolResult:

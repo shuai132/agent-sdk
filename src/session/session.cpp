@@ -341,6 +341,12 @@ void Session::process_stream() {
                 }
                 accumulated_text += e.text;
                 spdlog::trace("[Session {}] Text delta: {}", id_, e.text);
+              } else if constexpr (std::is_same_v<T, llm::ThinkingDelta>) {
+                // Stream thinking/reasoning content to callback
+                if (on_thinking_) {
+                  on_thinking_(e.text);
+                }
+                spdlog::trace("[Session {}] Thinking delta: {}", id_, e.text);
               } else if constexpr (std::is_same_v<T, llm::ToolCallDelta>) {
                 // Find existing builder by id and accumulate, or create new
                 // Only create new builder if id is non-empty (first delta has the real id)

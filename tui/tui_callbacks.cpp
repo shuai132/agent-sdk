@@ -12,13 +12,45 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
   auto& session = ctx.session;
   auto refresh_fn = ctx.refresh_fn;
 
+  // Accumulated thinking text
+  static std::string thinking_buffer;
+
   session->on_stream([&state, refresh_fn](const std::string& text) {
+    // When actual content starts streaming, finalize thinking
+    if (!thinking_buffer.empty()) {
+      // Push thinking as a special entry in chat log
+      state.chat_log.push({EntryKind::Thinking, thinking_buffer, ""});
+      thinking_buffer.clear();
+    }
     state.chat_log.append_stream(text);
     state.agent_state.set_activity("Generating...");
     refresh_fn();
   });
 
+  session->on_thinking([&state, refresh_fn](const std::string& thinking) {
+    // Append to thinking buffer
+    thinking_buffer += thinking;
+
+    // Show last 60 chars of accumulated thinking in activity area
+    std::string display = thinking_buffer;
+    // Replace newlines with spaces for display
+    for (auto& c : display) {
+      if (c == '\n' || c == '\r') c = ' ';
+    }
+    // Show last part if too long
+    if (display.size() > 60) {
+      display = "..." + display.substr(display.size() - 57);
+    }
+    state.agent_state.set_activity("💭 " + display);
+    refresh_fn();
+  });
+
   session->on_tool_call([&state, refresh_fn](const std::string& tool, const agent::json& args) {
+    // Finalize thinking if there was thinking before tool call
+    if (!thinking_buffer.empty()) {
+      state.chat_log.push({EntryKind::Thinking, thinking_buffer, ""});
+      thinking_buffer.clear();
+    }
     std::string args_str = args.dump(2);
     state.tool_panel.start_tool(tool, args_str);
     state.chat_log.push({EntryKind::ToolCall, tool, args_str});

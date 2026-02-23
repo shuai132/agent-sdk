@@ -20,6 +20,7 @@ namespace agent_cli {
 enum class EntryKind {
   UserMsg,
   AssistantText,
+  Thinking,  // AI 思考过程（reasoning_content）
   ToolCall,
   ToolResult,
   SubtaskStart,
