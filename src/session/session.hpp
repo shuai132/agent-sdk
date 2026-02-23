@@ -147,6 +147,13 @@ class Session : public std::enable_shared_from_this<Session> {
     question_handler_ = std::move(handler);
   }
 
+  // Subagent event handling (for Task tool progress)
+  using SubagentEventHandler = std::function<void(const std::string& tool_call_id, const SubagentEvent& event)>;
+
+  void set_subagent_event_handler(SubagentEventHandler handler) {
+    subagent_event_handler_ = std::move(handler);
+  }
+
  private:
   Session(asio::io_context& io_ctx, const Config& config, AgentType agent_type, std::shared_ptr<MessageStore> store);
 
@@ -203,6 +210,7 @@ class Session : public std::enable_shared_from_this<Session> {
   OnErrorCallback on_error_;
   PermissionHandler permission_handler_;
   QuestionHandler question_handler_;
+  SubagentEventHandler subagent_event_handler_;
 
   // Doom loop tracking
   struct ToolCallRecord {

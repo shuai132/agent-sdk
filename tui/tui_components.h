@@ -35,6 +35,9 @@ struct ChatEntry {
   EntryKind kind;
   std::string text;
   std::string detail;  // 可选的额外信息 (args, result 等)
+
+  // Subagent nested entries (for TaskTool)
+  std::vector<ChatEntry> nested_entries;
 };
 
 // ============================================================
@@ -50,6 +53,12 @@ class ChatLog {
   void clear();
   ChatEntry last() const;
   std::vector<ChatEntry> filter(EntryKind kind) const;
+
+  // Add nested entry to a tool call (for subagent progress)
+  void add_nested_entry(const std::string& tool_name, ChatEntry nested_entry);
+
+  // Update activity status for a tool call (for subagent progress)
+  void update_tool_activity(const std::string& tool_name, const std::string& activity);
 
  private:
   mutable std::mutex mu_;

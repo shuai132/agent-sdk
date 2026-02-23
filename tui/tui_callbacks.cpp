@@ -67,6 +67,37 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     refresh_fn();
   });
 
+  // Subagent event handler for Task tool progress
+  session->set_subagent_event_handler([&state, refresh_fn](const std::string& tool_call_id, const agent::SubagentEvent& event) {
+    // Convert subagent event to nested chat entry
+    ChatEntry nested_entry;
+    switch (event.type) {
+      case agent::SubagentEvent::Type::Stream:
+        // Accumulate stream text - update the last nested entry if it's AssistantText
+        nested_entry = {EntryKind::AssistantText, event.text, ""};
+        break;
+      case agent::SubagentEvent::Type::Thinking:
+        nested_entry = {EntryKind::Thinking, event.text, ""};
+        state.chat_log.update_tool_activity("task", "💭 Thinking...");
+        break;
+      case agent::SubagentEvent::Type::ToolCall:
+        nested_entry = {EntryKind::ToolCall, event.text, event.detail};
+        state.chat_log.update_tool_activity("task", "🔧 " + event.text + "...");
+        break;
+      case agent::SubagentEvent::Type::ToolResult:
+        nested_entry = {EntryKind::ToolResult, event.text + (event.is_error ? " ✗" : " ✓"), event.detail};
+        break;
+      case agent::SubagentEvent::Type::Complete:
+        state.chat_log.update_tool_activity("task", "");  // Clear activity
+        return;                                           // Don't add nested entry for complete
+      case agent::SubagentEvent::Type::Error:
+        nested_entry = {EntryKind::Error, event.text, ""};
+        break;
+    }
+    state.chat_log.add_nested_entry("task", std::move(nested_entry));
+    refresh_fn();
+  });
+
   session->on_complete([&state, refresh_fn](agent::FinishReason reason) {
     if (reason != agent::FinishReason::Stop && reason != agent::FinishReason::ToolCalls) {
       state.chat_log.push({EntryKind::SystemInfo, "Session ended: " + agent::to_string(reason), ""});

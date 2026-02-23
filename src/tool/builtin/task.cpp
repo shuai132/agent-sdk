@@ -46,17 +46,39 @@ std::future<ToolResult> TaskTool::execute(const json& args, const ToolContext& c
     std::promise<void> completion_promise;
     auto completion_future = completion_promise.get_future();
 
-    // Set up callbacks to capture the response
-    child_session->on_stream([&response_text](const std::string& text) {
+    // Helper to emit subagent events
+    auto emit_event = [&ctx](SubagentEvent::Type type, const std::string& text, const std::string& detail = "", bool is_error = false) {
+      if (ctx.on_subagent_event) {
+        ctx.on_subagent_event({type, text, detail, is_error});
+      }
+    };
+
+    // Set up callbacks to capture the response and emit progress events
+    child_session->on_stream([&response_text, &emit_event](const std::string& text) {
       response_text += text;
+      emit_event(SubagentEvent::Type::Stream, text);
     });
 
-    child_session->on_complete([&completion_promise](FinishReason reason) {
+    child_session->on_thinking([&emit_event](const std::string& thinking) {
+      emit_event(SubagentEvent::Type::Thinking, thinking);
+    });
+
+    child_session->on_tool_call([&emit_event](const std::string& tool, const json& args) {
+      emit_event(SubagentEvent::Type::ToolCall, tool, args.dump(2));
+    });
+
+    child_session->on_tool_result([&emit_event](const std::string& tool, const std::string& result, bool is_error) {
+      emit_event(SubagentEvent::Type::ToolResult, tool, result, is_error);
+    });
+
+    child_session->on_complete([&completion_promise, &emit_event](FinishReason reason) {
+      emit_event(SubagentEvent::Type::Complete, to_string(reason));
       completion_promise.set_value();
     });
 
-    child_session->on_error([&response_text, &completion_promise](const std::string& error) {
+    child_session->on_error([&response_text, &completion_promise, &emit_event](const std::string& error) {
       response_text = "Error: " + error;
+      emit_event(SubagentEvent::Type::Error, error);
       completion_promise.set_value();
     });
 

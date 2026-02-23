@@ -543,6 +543,14 @@ void Session::execute_tool_calls() {
       return self->create_child(agent_type);
     };
 
+    // Provide subagent event callback for Task tool progress reporting
+    std::string tool_call_id = tc->id;
+    ctx.on_subagent_event = [self, tool_call_id](const SubagentEvent& event) {
+      if (self->subagent_event_handler_) {
+        self->subagent_event_handler_(tool_call_id, event);
+      }
+    };
+
     // Execute tool
     tc->started = true;
 

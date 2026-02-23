@@ -29,6 +29,15 @@ struct QuestionResponse {
   bool cancelled = false;
 };
 
+// Subagent event types for progress tracking
+struct SubagentEvent {
+  enum class Type { Stream, Thinking, ToolCall, ToolResult, Complete, Error };
+  Type type;
+  std::string text;
+  std::string detail;  // For ToolCall: tool name, for ToolResult: result, etc.
+  bool is_error = false;
+};
+
 // Tool execution context
 struct ToolContext {
   SessionId session_id;
@@ -43,6 +52,9 @@ struct ToolContext {
 
   // Progress callback
   std::function<void(const std::string& status)> on_progress;
+
+  // Subagent event callback (for Task tool to report child session progress)
+  std::function<void(const SubagentEvent& event)> on_subagent_event;
 
   // Create child session callback (for Task tool)
   std::function<std::shared_ptr<Session>(AgentType)> create_child_session;

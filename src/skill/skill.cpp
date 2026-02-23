@@ -77,8 +77,7 @@ static std::map<std::string, std::string> parse_flat_yaml(const std::string& yam
     if (!current_key.empty()) {
       // Strip quotes if present
       if (current_value.size() >= 2 &&
-          ((current_value.front() == '"' && current_value.back() == '"') ||
-           (current_value.front() == '\'' && current_value.back() == '\''))) {
+          ((current_value.front() == '"' && current_value.back() == '"') || (current_value.front() == '\'' && current_value.back() == '\''))) {
         current_value = current_value.substr(1, current_value.size() - 2);
       }
       result[current_key] = current_value;

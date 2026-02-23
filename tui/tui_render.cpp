@@ -109,6 +109,59 @@ static std::vector<std::pair<std::string, std::string>> parse_args_to_kv(const s
   return result;
 }
 
+// Extract activity from detail string (stored as __ACTIVITY__:xxx)
+static std::string extract_activity(const std::string& detail) {
+  auto pos = detail.find("\n__ACTIVITY__:");
+  if (pos != std::string::npos) {
+    return detail.substr(pos + 14);  // Skip "\n__ACTIVITY__:"
+  }
+  return "";
+}
+
+// Extract clean detail without activity suffix
+static std::string extract_clean_detail(const std::string& detail) {
+  auto pos = detail.find("\n__ACTIVITY__:");
+  if (pos != std::string::npos) {
+    return detail.substr(0, pos);
+  }
+  return detail;
+}
+
+// Render a nested subagent entry
+static Element render_nested_entry(const ChatEntry& entry) {
+  switch (entry.kind) {
+    case EntryKind::ToolCall:
+      return hbox({
+          text("   ◦ ") | color(Color::Cyan),
+          text(entry.text) | bold,
+          text(" ") | dim,
+      });
+    case EntryKind::ToolResult: {
+      bool is_error = entry.text.find("✗") != std::string::npos;
+      return hbox({
+          text("     ") | dim,
+          text(is_error ? "✗" : "✓") | color(is_error ? Color::Red : Color::Green),
+          text(" done") | dim,
+      });
+    }
+    case EntryKind::Thinking:
+      return hbox({
+          text("   💭 ") | dim,
+          text(truncate_text(entry.text, 60)) | dim | italic,
+      });
+    case EntryKind::AssistantText:
+      // Don't show stream text in collapsed view
+      return text("");
+    case EntryKind::Error:
+      return hbox({
+          text("   ✗ ") | color(Color::Red),
+          text(truncate_text(entry.text, 80)) | color(Color::Red),
+      });
+    default:
+      return text("");
+  }
+}
+
 Element render_tool_group(const ToolGroup& group, bool expanded) {
   bool is_error = group.has_result && group.result.text.find("✗") != std::string::npos;
   bool is_running = !group.has_result;
@@ -116,13 +169,21 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
   std::string status_icon = is_running ? "⏳" : (is_error ? "✗" : "✓");
   Color status_color = is_running ? Color::Yellow : (is_error ? Color::Red : Color::Green);
 
+  // Extract activity from detail (for subagent progress)
+  std::string activity = extract_activity(group.call.detail);
+  std::string clean_detail = extract_clean_detail(group.call.detail);
+
   // 解析参数为 key-value 格式
-  auto args_kv = parse_args_to_kv(group.call.detail);
+  auto args_kv = parse_args_to_kv(clean_detail);
 
   // 构造卡片头部状态文本
   std::string status_text;
   if (is_running) {
-    status_text = "running...";
+    if (!activity.empty()) {
+      status_text = activity;  // Show subagent activity instead of "running..."
+    } else {
+      status_text = "running...";
+    }
   } else if (is_error) {
     status_text = "error";
   } else {
@@ -172,6 +233,44 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
       }
       if (value_lines.size() > 20) {
         card_content.push_back(text("     ...(" + std::to_string(value_lines.size()) + " lines)") | dim);
+      }
+    }
+  }
+
+  // Subagent nested entries (for task tool)
+  if (!group.call.nested_entries.empty()) {
+    card_content.push_back(text(""));
+    card_content.push_back(text("   Subagent execution:") | bold | dim | color(Color::Magenta));
+
+    // Group stream text together, render tool calls separately
+    std::string accumulated_stream;
+    for (const auto& nested : group.call.nested_entries) {
+      if (nested.kind == EntryKind::AssistantText) {
+        accumulated_stream += nested.text;
+      } else {
+        // Flush accumulated stream if any
+        if (!accumulated_stream.empty()) {
+          auto stream_lines = split_lines(accumulated_stream);
+          for (size_t si = 0; si < stream_lines.size() && si < 10; ++si) {
+            card_content.push_back(text("   " + stream_lines[si]) | dim);
+          }
+          if (stream_lines.size() > 10) {
+            card_content.push_back(text("   ...(" + std::to_string(stream_lines.size()) + " lines)") | dim);
+          }
+          accumulated_stream.clear();
+        }
+        // Render the non-stream entry
+        card_content.push_back(render_nested_entry(nested));
+      }
+    }
+    // Flush remaining stream
+    if (!accumulated_stream.empty()) {
+      auto stream_lines = split_lines(accumulated_stream);
+      for (size_t si = 0; si < stream_lines.size() && si < 10; ++si) {
+        card_content.push_back(text("   " + stream_lines[si]) | dim);
+      }
+      if (stream_lines.size() > 10) {
+        card_content.push_back(text("   ...(" + std::to_string(stream_lines.size()) + " lines)") | dim);
       }
     }
   }
