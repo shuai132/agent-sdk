@@ -158,9 +158,9 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
     }
     spdlog::info("[Anthropic]   [{}] {}: {}", i + 1, to_string(msg.role()), content);
   }
+  // Log complete request body
+  spdlog::info("[Anthropic] Request body ({} bytes):\n{}", options.body.size(), json::parse(options.body).dump(2));
   spdlog::info("[Anthropic] ===== End Request =====");
-  
-  spdlog::debug("[Anthropic] Request body: {}", options.body);
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
   auto shared_complete = std::make_shared<std::function<void()>>(std::move(on_complete));

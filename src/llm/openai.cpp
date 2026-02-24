@@ -211,6 +211,9 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
       spdlog::info("[OpenAI]   [{}] {}: {}", i, role, content);
     }
   }
+
+  // Log complete request body
+  spdlog::info("[OpenAI] Request body ({} bytes):\n{}", options.body.size(), body_json.dump(2));
   spdlog::info("[OpenAI] ===== End Request =====");
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
