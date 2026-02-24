@@ -57,6 +57,10 @@ void Message::add_tool_result(const std::string& call_id, const std::string& nam
   parts_.push_back(ToolResultPart{call_id, name, output, is_error, std::nullopt, json::object(), false, std::nullopt});
 }
 
+void Message::add_thinking(const std::string& text) {
+  parts_.push_back(ThinkingPart{text});
+}
+
 std::string Message::text() const {
   std::string result;
   for (const auto& part : parts_) {
@@ -129,6 +133,9 @@ json Message::to_json() const {
     if (auto* text = std::get_if<TextPart>(&part)) {
       part_json["type"] = "text";
       part_json["text"] = text->text;
+    } else if (auto* thinking = std::get_if<ThinkingPart>(&part)) {
+      part_json["type"] = "thinking";
+      part_json["text"] = thinking->text;
     } else if (auto* tc = std::get_if<ToolCallPart>(&part)) {
       part_json["type"] = "tool_call";
       part_json["id"] = tc->id;
@@ -178,6 +185,8 @@ Message Message::from_json(const json& j) {
       std::string type = part_json.value("type", "");
       if (type == "text") {
         msg.parts_.push_back(TextPart{part_json["text"]});
+      } else if (type == "thinking") {
+        msg.parts_.push_back(ThinkingPart{part_json["text"]});
       } else if (type == "tool_call") {
         msg.parts_.push_back(ToolCallPart{part_json["id"], part_json["name"], part_json["arguments"], part_json.value("started", false),
                                           part_json.value("completed", false)});

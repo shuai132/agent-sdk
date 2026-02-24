@@ -33,10 +33,7 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
 
     // Show thinking content in activity area without truncation
     std::string display = thinking_buffer;
-    // Replace newlines with spaces for display
-    for (auto& c : display) {
-      if (c == '\n' || c == '\r') c = ' ';
-    }
+    // Keep newlines for proper multi-line display
     // Don't truncate - show full thinking content
     state.agent_state.set_activity("💭 " + display);
     refresh_fn();

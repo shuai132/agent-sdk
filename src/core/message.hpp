@@ -20,6 +20,10 @@ struct TextPart {
   std::string text;
 };
 
+struct ThinkingPart {
+  std::string text;  // Reasoning/thinking content
+};
+
 struct ToolCallPart {
   std::string id;
   std::string name;
@@ -71,7 +75,7 @@ struct SubtaskPart {
   std::optional<std::string> result;
 };
 
-using MessagePart = std::variant<TextPart, ToolCallPart, ToolResultPart, ImagePart, FilePart, CompactionPart, SubtaskPart>;
+using MessagePart = std::variant<TextPart, ThinkingPart, ToolCallPart, ToolResultPart, ImagePart, FilePart, CompactionPart, SubtaskPart>;
 
 // Message role
 enum class Role { System, User, Assistant };
@@ -186,6 +190,8 @@ class Message {
   void add_tool_call(const std::string& id, const std::string& name, const json& args);
 
   void add_tool_result(const std::string& call_id, const std::string& name, const std::string& output, bool is_error = false);
+
+  void add_thinking(const std::string& text);
 
   // Get text content (concatenated)
   std::string text() const;

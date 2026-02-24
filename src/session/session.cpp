@@ -339,6 +339,7 @@ void Session::process_stream() {
 
   // Build message as we receive stream events
   std::string accumulated_text;
+  std::string accumulated_thinking;
   TokenUsage usage;
   FinishReason finish_reason = FinishReason::Stop;
   std::optional<std::string> error_message;
@@ -353,9 +354,9 @@ void Session::process_stream() {
 
   provider_->stream(
       request,
-      [this, &accumulated_text, &usage, &finish_reason, &error_message, &tool_call_builders](const llm::StreamEvent& event) {
+      [this, &accumulated_text, &accumulated_thinking, &usage, &finish_reason, &error_message, &tool_call_builders](const llm::StreamEvent& event) {
         std::visit(
-            [this, &accumulated_text, &usage, &finish_reason, &error_message, &tool_call_builders](auto&& e) {
+            [this, &accumulated_text, &accumulated_thinking, &usage, &finish_reason, &error_message, &tool_call_builders](auto&& e) {
               using T = std::decay_t<decltype(e)>;
 
               if constexpr (std::is_same_v<T, llm::TextDelta>) {
@@ -370,6 +371,7 @@ void Session::process_stream() {
                 if (on_thinking_) {
                   on_thinking_(e.text);
                 }
+                accumulated_thinking += e.text;
                 spdlog::trace("[Session {}] Thinking delta: {}", id_, e.text);
               } else if constexpr (std::is_same_v<T, llm::ToolCallDelta>) {
                 // Find existing builder by id and accumulate, or create new
@@ -458,6 +460,12 @@ void Session::process_stream() {
 
   // Finalize message - build from accumulated data
   Message msg(Role::Assistant, "");
+
+  // Add accumulated thinking
+  if (!accumulated_thinking.empty()) {
+    spdlog::debug("[Session {}] LLM response thinking: {} chars", id_, accumulated_thinking.size());
+    msg.add_thinking(accumulated_thinking);
+  }
 
   // Add accumulated text
   if (!accumulated_text.empty()) {

@@ -24,11 +24,11 @@ namespace agent_cli {
 
 // 登录状态枚举
 enum class LoginState {
-  NotRequired,   // 不需要登录（已有 token 或使用其他认证方式）
-  NeedLogin,     // 需要登录
-  WaitingAuth,   // 等待用户扫码授权
-  Success,       // 登录成功
-  Failed,        // 登录失败
+  NotRequired,  // 不需要登录（已有 token 或使用其他认证方式）
+  NeedLogin,    // 需要登录
+  WaitingAuth,  // 等待用户扫码授权
+  Success,      // 登录成功
+  Failed,       // 登录失败
 };
 
 // TUI 应用的全部可变状态，集中管理
@@ -83,11 +83,11 @@ struct AppState {
 
   // ----- 登录面板（Qwen OAuth）-----
   LoginState login_state = LoginState::NotRequired;
-  std::string login_qr_code;      // QR 码字符串（已渲染为 Unicode）
-  std::string login_auth_url;     // 授权链接
-  std::string login_user_code;    // 用户码
-  std::string login_status_msg;   // 状态消息
-  std::string login_error_msg;    // 错误消息
+  std::string login_qr_code;     // QR 码字符串（已渲染为 Unicode）
+  std::string login_auth_url;    // 授权链接
+  std::string login_user_code;   // 用户码
+  std::string login_status_msg;  // 状态消息
+  std::string login_error_msg;   // 错误消息
 
   // ----- 便捷方法 -----
   void reset_view();

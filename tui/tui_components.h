@@ -34,16 +34,16 @@ std::string to_string(EntryKind kind);
 
 struct ChatEntry {
   EntryKind kind;
-  std::string text;    // 主要文本内容
-  std::string detail;  // 额外详情 (如参数/结果)
-  std::string tool_call_id;  // Tool call ID for matching subagent events
+  std::string text;                       // 主要文本内容
+  std::string detail;                     // 额外详情 (如参数/结果)
+  std::string tool_call_id;               // Tool call ID for matching subagent events
   std::vector<ChatEntry> nested_entries;  // Nested entries for subagent progress
-  
+
   // 时间统计
   std::chrono::system_clock::time_point created_at = std::chrono::system_clock::now();
-  std::optional<std::chrono::system_clock::time_point> started_at;  // 工具开始执行时间
-  std::optional<std::chrono::system_clock::time_point> completed_at; // 工具完成时间
-  
+  std::optional<std::chrono::system_clock::time_point> started_at;    // 工具开始执行时间
+  std::optional<std::chrono::system_clock::time_point> completed_at;  // 工具完成时间
+
   // 获取耗时（毫秒）
   std::optional<int64_t> duration_ms() const {
     if (started_at && completed_at) {
@@ -228,7 +228,7 @@ class AgentState {
   std::string model_;
   std::string session_id_;
   std::string activity_;
-  
+
   // 会话时间统计
   std::optional<std::chrono::steady_clock::time_point> session_start_time_;
   std::optional<std::chrono::steady_clock::time_point> session_pause_time_;

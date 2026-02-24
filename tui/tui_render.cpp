@@ -39,14 +39,9 @@ Element render_text_entry(const ChatEntry& entry) {
     }
 
     case EntryKind::Thinking: {
-      auto lines = split_lines(entry.text);
-      Elements content;
-      for (const auto& line : lines) {
-        content.push_back(paragraph(line));
-      }
       return vbox({
           hbox({text("  💭 ") | dim, text("Thinking") | dim | italic}),
-          hbox({text("    "), vbox(content) | dim}) | flex,
+          hbox({text("    "), paragraph(entry.text) | dim | flex}),
           text(""),
       });
     }
@@ -145,9 +140,10 @@ static Element render_nested_entry(const ChatEntry& entry) {
       });
     }
     case EntryKind::Thinking:
-      return hbox({
-          text("   💭 ") | dim,
-          text(truncate_text(entry.text, 60)) | dim | italic,
+      // Always use paragraph for thinking to enable automatic line wrapping
+      return vbox({
+          hbox({text("   💭 ") | dim, text("Thinking") | dim | italic}),
+          hbox({text("      "), paragraph(entry.text) | dim | italic | flex}),
       });
     case EntryKind::AssistantText:
       // Don't show stream text in collapsed view
@@ -400,7 +396,10 @@ Element build_chat_view(AppState& state) {
   if (state.agent_state.is_running()) {
     auto activity = state.agent_state.activity();
     if (activity.empty()) activity = "Thinking...";
-    chat_elements.push_back(hbox({text("    "), text(activity) | dim | color(Color::Cyan)}));
+
+    // Always use paragraph for activity to enable automatic line wrapping
+    // This ensures long thinking content is properly visible
+    chat_elements.push_back(hbox({text("    "), paragraph(activity) | dim | color(Color::Cyan) | flex}));
   }
 
   chat_elements.push_back(text(""));
