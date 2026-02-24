@@ -35,7 +35,7 @@ std::future<LlmResponse> AnthropicProvider::complete(const LlmRequest& request) 
     options.headers[key] = value;
   }
 
-  http_client_.request(base_url_ + "/v1/messages", options, [promise](net::HttpResponse response) {
+  http_client_.request(base_url_ + "/v1/messages", options, [promise](const net::HttpResponse& response) {
     LlmResponse result;
 
     if (!response.error.empty()) {

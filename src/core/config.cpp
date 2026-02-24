@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <set>
 
 namespace agent {
 
@@ -411,6 +412,18 @@ std::optional<fs::path> find_git_root(const fs::path& start_dir) {
 
 std::vector<fs::path> find_agent_instructions(const fs::path& start_dir) {
   std::vector<fs::path> result;
+  std::set<fs::path> seen;  // 用于去重，避免同一文件被加载多次
+
+  // Helper: 添加文件（如果存在且未添加过）
+  auto add_if_exists = [&](const fs::path& candidate) {
+    if (fs::exists(candidate)) {
+      auto canonical = fs::canonical(candidate);
+      if (seen.find(canonical) == seen.end()) {
+        seen.insert(canonical);
+        result.push_back(candidate);
+      }
+    }
+  };
 
   // Determine the boundary: stop at git worktree root or filesystem root
   auto git_root = find_git_root(start_dir);
@@ -427,10 +440,7 @@ std::vector<fs::path> find_agent_instructions(const fs::path& start_dir) {
     };
 
     for (const auto& c : candidates) {
-      auto candidate = current / c.path;
-      if (fs::exists(candidate)) {
-        result.push_back(candidate);
-      }
+      add_if_exists(current / c.path);
     }
 
     // Stop if we've reached the git root
@@ -457,7 +467,11 @@ std::vector<fs::path> find_agent_instructions(const fs::path& start_dir) {
   // Insert global instructions in reverse order so the first found ends up first
   for (auto it = global_candidates.rbegin(); it != global_candidates.rend(); ++it) {
     if (fs::exists(*it)) {
-      result.insert(result.begin(), *it);
+      auto canonical = fs::canonical(*it);
+      if (seen.find(canonical) == seen.end()) {
+        seen.insert(canonical);
+        result.insert(result.begin(), *it);
+      }
     }
   }
 
