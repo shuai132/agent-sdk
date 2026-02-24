@@ -135,6 +135,23 @@ void ChatLog::update_tool_completed(const std::string& tool_call_id) {
   }
 }
 
+void ChatLog::append_nested_thinking(const std::string& tool_call_id, const std::string& thinking_text) {
+  std::lock_guard<std::mutex> lock(mu_);
+  // Find the ToolCall entry with matching tool_call_id
+  for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+    if (it->kind == EntryKind::ToolCall && it->tool_call_id == tool_call_id) {
+      // Look for existing thinking entry to append to
+      if (!it->nested_entries.empty() && it->nested_entries.back().kind == EntryKind::Thinking) {
+        it->nested_entries.back().text += thinking_text;
+      } else {
+        // Create new thinking entry
+        it->nested_entries.push_back({EntryKind::Thinking, thinking_text, ""});
+      }
+      return;
+    }
+  }
+}
+
 // ============================================================
 // ToolPanel
 // ============================================================

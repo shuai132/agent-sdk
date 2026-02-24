@@ -29,9 +29,9 @@ std::future<LlmResponse> AnthropicProvider::complete(const LlmRequest& request) 
   options.method = "POST";
   options.body = body.dump();
   options.headers = {{"Content-Type", "application/json"}, {"x-api-key", config_.api_key}, {"anthropic-version", api_version_}};
-  options.timeout = std::chrono::seconds(120);        // 增加超时时间到2分钟
-  options.max_retries = 3;                            // 最多重试3次
-  options.retry_delay = std::chrono::milliseconds(2000); // 重试间隔2秒
+  options.timeout = std::chrono::seconds(120);            // 增加超时时间到2分钟
+  options.max_retries = 3;                                // 最多重试3次
+  options.retry_delay = std::chrono::milliseconds(2000);  // 重试间隔2秒
 
   // Add any custom headers
   for (const auto& [key, value] : config_.headers) {
@@ -129,9 +129,9 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
   options.method = "POST";
   options.body = body.dump();
   options.headers = headers;
-  options.timeout = std::chrono::seconds(180);        // 流式请求更长超时时间（3分钟）
-  options.max_retries = 2;                            // 流式请求重试次数少一些
-  options.retry_delay = std::chrono::milliseconds(3000); // 重试间隔3秒
+  options.timeout = std::chrono::seconds(180);            // 流式请求更长超时时间（3分钟）
+  options.max_retries = 2;                                // 流式请求重试次数少一些
+  options.retry_delay = std::chrono::milliseconds(3000);  // 重试间隔3秒
 
   spdlog::debug("[Anthropic] Request URL: {}/v1/messages", base_url_);
   spdlog::debug("[Anthropic] Request model: {}", request.model);

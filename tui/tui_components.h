@@ -78,6 +78,9 @@ class ChatLog {
   void update_tool_started(const std::string& tool_call_id);
   void update_tool_completed(const std::string& tool_call_id);
 
+  // Accumulate thinking text for a tool call (for subagent thinking)
+  void append_nested_thinking(const std::string& tool_call_id, const std::string& thinking_text);
+
  private:
   mutable std::mutex mu_;
   std::vector<ChatEntry> entries_;

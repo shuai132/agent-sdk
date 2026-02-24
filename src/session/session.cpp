@@ -431,14 +431,14 @@ void Session::process_stream() {
   // Check for errors
   if (error_message) {
     spdlog::error("[Session {}] LLM stream error: {}", id_, *error_message);
-    
+
     // 检查是否应该重试
     if (should_retry_on_error(*error_message)) {
       if (retry_on_error(*error_message)) {
-        return; // 重试成功，继续执行
+        return;  // 重试成功，继续执行
       }
     }
-    
+
     // 重试失败或不应重试，设置错误状态
     if (on_error_) {
       on_error_(*error_message);
@@ -499,7 +499,7 @@ void Session::execute_tool_calls() {
 
   // Create user message for tool results
   Message result_msg(Role::User, "");
-  
+
   // Structure to hold tool execution state
   struct ToolExecution {
     ToolCallPart* tool_call;
@@ -508,9 +508,9 @@ void Session::execute_tool_calls() {
     std::future<ToolResult> future;
     bool started = false;
   };
-  
+
   std::vector<ToolExecution> executions;
-  
+
   // Phase 1: Validate and prepare all tool executions
   for (auto* tc : tool_calls) {
     if (tc->completed) continue;
@@ -590,7 +590,7 @@ void Session::execute_tool_calls() {
     execution.tool = tool;
     execution.context = std::move(ctx);
   }
-  
+
   // Phase 2: Launch all tool executions concurrently
   spdlog::debug("[Session {}] Launching {} tool execution(s) concurrently", id_, executions.size());
   for (auto& exec : executions) {
@@ -607,17 +607,17 @@ void Session::execute_tool_calls() {
       exec.tool_call->completed = true;
     }
   }
-  
+
   // Phase 3: Collect all results as they complete
   for (auto& exec : executions) {
     if (!exec.started) continue;  // Skip tools that failed to start
-    
+
     try {
       spdlog::debug("[Session {}] Waiting for tool result: {}", id_, exec.tool_call->name);
       auto result = exec.future.get();
-      
-      spdlog::debug("[Session {}] Tool {} completed, is_error={}, output length={}", 
-                    id_, exec.tool_call->name, result.is_error, result.output.size());
+
+      spdlog::debug("[Session {}] Tool {} completed, is_error={}, output length={}", id_, exec.tool_call->name, result.is_error,
+                    result.output.size());
 
       // Truncate if needed
       auto truncated = Truncate::save_and_truncate(result.output, exec.tool_call->name);
@@ -981,22 +981,20 @@ bool Session::should_retry_on_error(const std::string& error_msg) {
 
   // 检查错误类型是否可以重试
   // 超时错误
-  if (error_msg.find("timed out") != std::string::npos || 
-      error_msg.find("Request timed out") != std::string::npos) {
+  if (error_msg.find("timed out") != std::string::npos || error_msg.find("Request timed out") != std::string::npos) {
     return true;
   }
-  
+
   // 网络连接错误
-  if (error_msg.find("Network error") != std::string::npos ||
-      error_msg.find("Connection") != std::string::npos) {
+  if (error_msg.find("Network error") != std::string::npos || error_msg.find("Connection") != std::string::npos) {
     return true;
   }
-  
+
   // 临时服务器错误 (5xx)
   if (error_msg.find("HTTP error: 5") != std::string::npos) {
     return true;
   }
-  
+
   // 速率限制错误 (429)
   if (error_msg.find("HTTP error: 429") != std::string::npos) {
     return true;
@@ -1007,7 +1005,7 @@ bool Session::should_retry_on_error(const std::string& error_msg) {
 
 bool Session::retry_on_error(const std::string& error_msg) {
   auto now = std::chrono::steady_clock::now();
-  
+
   // 确保重试间隔至少为3秒（避免过于频繁的重试）
   if (retry_state_.current_attempt > 0) {
     auto elapsed = now - retry_state_.last_retry_time;
@@ -1015,31 +1013,30 @@ bool Session::retry_on_error(const std::string& error_msg) {
       std::this_thread::sleep_for(std::chrono::seconds(3) - elapsed);
     }
   }
-  
+
   retry_state_.current_attempt++;
   retry_state_.last_retry_time = std::chrono::steady_clock::now();
-  
+
   // 指数退避：每次重试时间间隔增加
   auto backoff_seconds = std::min(30, static_cast<int>(std::pow(2, retry_state_.current_attempt - 1) * 3));
-  
-  spdlog::warn("[Session {}] Retrying after error (attempt {}/{}): {}", 
-               id_, retry_state_.current_attempt, retry_state_.max_retries, error_msg);
+
+  spdlog::warn("[Session {}] Retrying after error (attempt {}/{}): {}", id_, retry_state_.current_attempt, retry_state_.max_retries, error_msg);
   spdlog::info("[Session {}] Waiting {}s before retry...", id_, backoff_seconds);
-  
+
   std::this_thread::sleep_for(std::chrono::seconds(backoff_seconds));
-  
+
   // 保存当前消息数量，以便重试时避免重复添加
   retry_state_.last_message_count = messages_.size();
-  
+
   try {
     // 重新调用 process_stream，但不添加新的用户消息
     spdlog::info("[Session {}] Starting retry attempt {}", id_, retry_state_.current_attempt);
     process_stream();
-    
+
     // 重试成功，重置重试状态
     retry_state_.current_attempt = 0;
     return true;
-    
+
   } catch (const std::exception& e) {
     spdlog::error("[Session {}] Retry attempt {} failed: {}", id_, retry_state_.current_attempt, e.what());
     return false;

@@ -226,9 +226,9 @@ class Session : public std::enable_shared_from_this<Session> {
 
   // Retry mechanism
   struct RetryState {
-    int max_retries = 3;           // 最大重试次数
-    int current_attempt = 0;       // 当前尝试次数
-    size_t last_message_count = 0; // 重试前的消息数量（用于避免重复添加）
+    int max_retries = 3;            // 最大重试次数
+    int current_attempt = 0;        // 当前尝试次数
+    size_t last_message_count = 0;  // 重试前的消息数量（用于避免重复添加）
     std::chrono::steady_clock::time_point last_retry_time;
   };
   RetryState retry_state_;

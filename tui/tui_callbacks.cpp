@@ -81,9 +81,11 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
         nested_entry = {EntryKind::AssistantText, event.text, ""};
         break;
       case agent::SubagentEvent::Type::Thinking:
-        nested_entry = {EntryKind::Thinking, event.text, ""};
+        // Use cumulative approach for thinking - don't create separate entries
+        state.chat_log.append_nested_thinking(tool_call_id, event.text);
         state.chat_log.update_tool_activity(tool_call_id, "💭 Thinking...");
-        break;
+        refresh_fn();
+        return;  // Early return, don't add as separate nested entry
       case agent::SubagentEvent::Type::ToolCall:
         nested_entry = {EntryKind::ToolCall, event.text, event.detail};
         state.chat_log.update_tool_activity(tool_call_id, "🔧 " + event.text + "...");
