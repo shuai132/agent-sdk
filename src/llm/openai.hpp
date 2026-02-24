@@ -23,14 +23,19 @@ class OpenAIProvider : public Provider {
 
   void cancel() override;
 
- private:
+ protected:
+  void set_base_url(const std::string& url) {
+    base_url_ = url;
+  }
+  const std::string& get_base_url() const {
+    return base_url_;
+  }
+  net::HttpClient& get_http_client() const {
+    return const_cast<net::HttpClient&>(http_client_);
+  }
   void parse_sse_event(const std::string& data, StreamCallback& callback);
 
   ProviderConfig config_;
-  asio::io_context& io_ctx_;
-  net::HttpClient http_client_;
-  std::unique_ptr<net::SseClient> sse_client_;
-
   std::string base_url_ = "https://api.openai.com";
 
   // Track tool calls during streaming (by index)
@@ -46,6 +51,11 @@ class OpenAIProvider : public Provider {
 
   // Track whether we're inside a <think>...</think> block in content
   bool in_thinking_block_ = false;
+
+ private:
+  asio::io_context& io_ctx_;
+  net::HttpClient http_client_;
+  std::unique_ptr<net::SseClient> sse_client_;
 };
 
 }  // namespace agent::llm

@@ -234,14 +234,14 @@ void handle_submit(AppState& state, AppContext& ctx, ScreenInteractive& screen) 
   state.chat_log.push({EntryKind::UserMsg, user_msg, ""});
   state.input_text.clear();  // 清空输入框
   state.agent_state.set_running(true);
-  
+
   // 启动或恢复会话计时器
   if (auto duration = state.agent_state.session_duration_ms(); !duration) {
     state.agent_state.start_session_timer();
   } else {
     state.agent_state.resume_session_timer();
   }
-  
+
   state.auto_scroll = true;
   state.scroll_y = 1.0f;
 

@@ -83,6 +83,7 @@ Supports multiple LLM providers with a unified Provider interface:
 
 - **Anthropic** (Claude series)
 - **OpenAI** (GPT series, and OpenAI API-compatible services)
+- **Ollama** (Local LLM server, supports DeepSeek-R1, Llama, Qwen, etc.)
 - Register custom providers via `ProviderFactory`
 
 ### 🧠 Multiple Agent Types
@@ -224,9 +225,15 @@ export OPENAI_API_KEY="your-api-key"
 # Optional overrides:
 export OPENAI_BASE_URL="https://api.openai.com"
 export OPENAI_MODEL="gpt-4o"
+
+# Option 4: Ollama (Local models, privacy-first)
+export OLLAMA_API_KEY=""  # No API key required
+# Optional overrides:
+export OLLAMA_BASE_URL="http://localhost:11434"
+export OLLAMA_MODEL="deepseek-r1:7b"  # Or any other installed model
 ```
 
-> **Priority**: `QWEN_OAUTH` > `OPENAI_API_KEY` (Qwen OAuth takes precedence when both are set)
+> **Priority**: `QWEN_OAUTH` > `OPENAI_API_KEY` > `OLLAMA_API_KEY`
 
 ### Code Example
 
@@ -354,7 +361,7 @@ agent-sdk/
 │   ├── core/           # Core types, messages, config, UUID
 │   ├── bus/            # Event bus
 │   ├── net/            # HTTP / SSE client (Asio + OpenSSL)
-│   ├── llm/            # LLM Providers (Anthropic / OpenAI)
+│   ├── llm/            # LLM Providers (Anthropic / OpenAI / Ollama)
 │   ├── tool/           # Tool system (registry, permissions, builtins)
 │   │   └── builtin/    # Built-in tool implementations
 │   ├── session/        # Session management (Agent Loop, compaction, truncation)
@@ -379,7 +386,7 @@ agent-sdk/
 - [x] Skill system
 - [x] Session persistence
 - [x] Full MCP client implementation
-- [ ] More LLM Providers (Gemini, local models, etc.)
+- [x] More LLM Providers (OpenAI, Anthropic, Ollama, etc.)
 - [ ] Vision support (image input)
 - [ ] REST API for server mode
 - [ ] C++20 coroutine (`co_await`) interface

@@ -1,6 +1,7 @@
 #include "provider.hpp"
 
 #include "llm/anthropic.hpp"
+#include "llm/ollama.hpp"
 #include "llm/openai.hpp"
 
 namespace agent::llm {
@@ -32,6 +33,10 @@ std::shared_ptr<Provider> ProviderFactory::create(const std::string& name, const
     // Register OpenAI provider
     instance().register_provider("openai", [](const ProviderConfig& cfg, asio::io_context& ctx) {
       return std::make_shared<OpenAIProvider>(cfg, ctx);
+    });
+    // Register Ollama provider
+    instance().register_provider("ollama", [](const ProviderConfig& cfg, asio::io_context& ctx) {
+      return std::make_shared<OllamaProvider>(cfg, ctx);
     });
   }
 

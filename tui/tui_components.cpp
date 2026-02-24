@@ -439,27 +439,27 @@ std::optional<int64_t> AgentState::session_duration_ms() const {
   if (!session_start_time_) {
     return std::nullopt;
   }
-  
+
   int64_t total_ms = session_accumulated_ms_;
-  
+
   if (!session_pause_time_) {
     // 当前正在计时中
     auto current_elapsed = std::chrono::steady_clock::now() - *session_start_time_;
     total_ms += std::chrono::duration_cast<std::chrono::milliseconds>(current_elapsed).count();
   }
-  
+
   return total_ms;
 }
 
 std::string AgentState::status_text() const {
   std::string s = "Model: " + model();
   s += " | Tokens: " + format_tokens(input_tokens()) + "in/" + format_tokens(output_tokens()) + "out";
-  
+
   // 添加会话耗时
   if (auto duration = session_duration_ms()) {
     s += " | Time: " + format_duration_ms(*duration);
   }
-  
+
   s += is_running() ? " | [Running...]" : " | [Ready]";
   return s;
 }

@@ -43,16 +43,16 @@ TEST_F(SessionTest, CreateChildSession) {
 
 TEST_F(SessionTest, WorkingDirectoryInjection) {
   asio::io_context io_ctx;
-  
+
   // Set a specific working directory for testing
   config_.working_dir = "/tmp/test_project";
-  
+
   auto session = Session::create(io_ctx, config_, AgentType::Build);
-  
+
   // Get the agent config that was created during session creation
   // We need to check that the working directory was injected into system_prompt
   auto agent_config = session->agent_config();
-  
+
   EXPECT_TRUE(agent_config.system_prompt.find("当前工作目录：/tmp/test_project") != std::string::npos);
   EXPECT_TRUE(agent_config.system_prompt.find("默认相对于此工作目录进行") != std::string::npos);
 }

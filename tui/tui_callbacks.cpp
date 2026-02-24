@@ -31,16 +31,13 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     // Append to thinking buffer
     thinking_buffer += thinking;
 
-    // Show last 60 chars of accumulated thinking in activity area
+    // Show thinking content in activity area without truncation
     std::string display = thinking_buffer;
     // Replace newlines with spaces for display
     for (auto& c : display) {
       if (c == '\n' || c == '\r') c = ' ';
     }
-    // Show last part if too long
-    if (display.size() > 60) {
-      display = "..." + display.substr(display.size() - 57);
-    }
+    // Don't truncate - show full thinking content
     state.agent_state.set_activity("💭 " + display);
     refresh_fn();
   });
@@ -95,7 +92,7 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
         break;
       case agent::SubagentEvent::Type::Complete:
         state.chat_log.update_tool_activity(tool_call_id, "");  // Clear activity
-        return;                                                  // Don't add nested entry for complete
+        return;                                                 // Don't add nested entry for complete
       case agent::SubagentEvent::Type::Error:
         nested_entry = {EntryKind::Error, event.text, ""};
         break;

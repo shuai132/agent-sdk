@@ -80,6 +80,7 @@ agent-sdk 选择 C++ 正是为了解决这些痛点：编译产物是一个轻�
 
 - **Anthropic**（Claude 系列）
 - **OpenAI**（GPT 系列，以及兼容 OpenAI API 的服务）
+- **Ollama**（本地 LLM 服务器，支持 DeepSeek-R1、Llama、Qwen 等）
 - 支持通过 `ProviderFactory` 注册自定义 Provider
 
 ### 🧠 多 Agent 类型
@@ -196,7 +197,7 @@ make -j$(nproc)
 ./build/agent_cli --help
 ```
 
-**环境变量配置**（三选一）：
+**环境变量配置**（四选一）：
 
 ```bash
 # 方式一：Qwen Portal（OAuth 认证，无需 API Key，推荐）
@@ -217,9 +218,15 @@ export OPENAI_API_KEY="your-api-key"
 # 可选覆盖：
 export OPENAI_BASE_URL="https://api.openai.com"
 export OPENAI_MODEL="gpt-4o"
+
+# 方式四：Ollama（本地模型，隐私优先）
+export OLLAMA_API_KEY=""  # 无需 API Key
+# 可选覆盖：
+export OLLAMA_BASE_URL="http://localhost:11434"
+export OLLAMA_MODEL="deepseek-r1:7b"  # 或其他已安装的模型
 ```
 
-> **优先级**：`QWEN_OAUTH` > `OPENAI_API_KEY`（当同时设置时 Qwen OAuth 优先）
+> **优先级**：`QWEN_OAUTH` > `OPENAI_API_KEY` > `OLLAMA_API_KEY`
 
 ### 代码示例
 
@@ -347,7 +354,7 @@ agent-sdk/
 │   ├── core/           # 核心类型、消息、配置、UUID
 │   ├── bus/            # 事件总线
 │   ├── net/            # HTTP / SSE 客户端（基于 Asio + OpenSSL）
-│   ├── llm/            # LLM Provider（Anthropic / OpenAI）
+│   ├── llm/            # LLM Provider（Anthropic / OpenAI / Ollama）
 │   ├── tool/           # 工具系统（注册、权限、内置工具）
 │   │   └── builtin/    # 内置工具实现
 │   ├── session/        # 会话管理（Agent Loop、上下文压缩、截断）
@@ -372,7 +379,7 @@ agent-sdk/
 - [x] Skill 系统
 - [x] 会话持久化存储
 - [x] MCP 客户端完整实现
-- [ ] 更多 LLM Provider（Gemini、本地模型等）
+- [x] 更多 LLM Provider（OpenAI、Anthropic、Ollama等）
 - [ ] 支持 Vision（图片输入）
 - [ ] 提供 REST API，可作为 Server 使用
 - [ ] C++20 协程（`co_await`）接口

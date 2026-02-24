@@ -49,12 +49,12 @@ Session::Session(asio::io_context& io_ctx, const Config& config, AgentType agent
   // Determine preferred provider order based on model name
   std::vector<std::string> provider_order;
   if (model_name.starts_with("gpt-") || model_name.starts_with("o1") || model_name.starts_with("o3") || model_name.starts_with("o4")) {
-    provider_order = {"openai", "anthropic"};
+    provider_order = {"openai", "anthropic", "ollama"};
   } else if (model_name.starts_with("claude-")) {
-    provider_order = {"anthropic", "openai"};
+    provider_order = {"anthropic", "openai", "ollama"};
   } else {
-    // Unknown model — try all configured providers
-    provider_order = {"anthropic", "openai"};
+    // Unknown model — try all configured providers (prioritize ollama for local models)
+    provider_order = {"ollama", "anthropic", "openai"};
   }
 
   for (const auto& provider_name : provider_order) {
@@ -306,7 +306,16 @@ void Session::run_loop() {
 
 void Session::process_stream() {
   if (!provider_) {
-    if (on_error_) on_error_("No LLM provider configured");
+    if (on_error_) {
+      std::string error_msg =
+          "No LLM provider configured.\n\n"
+          "Please set one of the following environment variables:\n"
+          "  • QWEN_OAUTH=1         — for Qwen Portal (OAuth, no API key needed)\n"
+          "  • ANTHROPIC_API_KEY    — for Claude models\n"
+          "  • OPENAI_API_KEY       — for OpenAI/compatible models\n"
+          "  • OLLAMA_API_KEY=\"\"    — for Ollama local models (no API key needed)";
+      on_error_(error_msg);
+    }
     state_ = SessionState::Failed;
     return;
   }

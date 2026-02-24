@@ -61,7 +61,7 @@ src/
   core/       # 基础类型、Message、Config、UUID、JsonStore、Version
   bus/        # 类型安全的事件总线
   net/        # HTTP / SSE 客户端（Asio + OpenSSL，PIMPL 模式）
-  llm/        # LLM 提供商（Anthropic、OpenAI）
+  llm/        # LLM 提供商（Anthropic、OpenAI、Ollama）
   tool/       # 工具注册表、权限系统、9 个内置工具
   session/    # 会话管理、Agent Loop、上下文压缩与截断、Prompt 处理
   agent/      # Agent 框架入口
@@ -71,6 +71,65 @@ examples/     # simple_chat、api_test、tool_test
 tests/        # GoogleTest 单元测试（15 个测试文件）
 tui/          # agent_cli TUI 应用（基于 FTXUI）
 ```
+
+## LLM 提供商支持
+
+SDK 支持多种 LLM 提供商，通过统一的 `Provider` 接口提供一致的体验。
+
+### 支持的提供商
+
+| 提供商           | 类名                  | 描述              | 特殊功能                |
+|---------------|---------------------|-----------------|---------------------|
+| **OpenAI**    | `OpenAIProvider`    | OpenAI GPT 系列模型 | 原生支持 reasoning、工具调用 |
+| **Anthropic** | `AnthropicProvider` | Claude 系列模型     | 支持工具调用、系统提示         |  
+| **Ollama**    | `OllamaProvider`    | 本地 LLM 服务器      | 自动模型发现、思考块解析        |
+
+### Ollama 本地支持
+
+`OllamaProvider` 通过继承 `OpenAIProvider` 实现，提供完整的本地 LLM 支持：
+
+#### 核心特性
+
+- **OpenAI 兼容 API**：使用 `/v1/chat/completions` 端点
+- **自动模型发现**：通过 `/api/tags` 获取本地可用模型
+- **思考块解析**：自动识别 `<think></think>` 标签，提取推理过程
+- **流式 & 非流式**：支持实时流式输出和批量响应
+- **工具调用支持**：完整的函数调用能力
+- **默认配置**：自动连接 `http://localhost:11434`
+
+#### 架构设计
+
+```cpp
+class OllamaProvider : public OpenAIProvider {
+  // 继承复用所有 OpenAI 兼容逻辑
+  std::vector<ModelInfo> models() const override;  // 仅重写模型发现
+};
+```
+
+#### 配置示例
+
+```json
+{
+  "provider": "ollama",
+  "model": "deepseek-r1:7b",
+  "base_url": "http://localhost:11434"
+}
+```
+
+#### 支持的模型类型
+
+- **推理模型**：DeepSeek-R1、Qwen2.5-Math 等（自动解析思考过程）
+- **对话模型**：Llama、Qwen、ChatGLM 等
+- **代码模型**：CodeLlama、CodeQwen 等
+- **工具调用模型**：支持 OpenAI 函数调用格式的任意模型
+
+### 继承复用架构
+
+为减少代码重复，采用继承复用设计：
+
+- **`OpenAIProvider`**：提供完整的 OpenAI 兼容实现
+- **`OllamaProvider`**：继承并仅重写差异化功能（模型发现）
+- **优势**：90% 代码复用、自动获得新特性、行为一致性保证
 
 ## 代码风格指南
 

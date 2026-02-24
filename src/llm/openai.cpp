@@ -84,8 +84,28 @@ std::future<LlmResponse> OpenAIProvider::complete(const LlmRequest& request) {
         auto& message = choice["message"];
 
         // Parse text content
+        std::string content;
         if (message.contains("content") && !message["content"].is_null()) {
-          msg.add_text(message["content"].get<std::string>());
+          content = message["content"].get<std::string>();
+        }
+
+        // Parse reasoning content (for models like qwen3 that put real content in reasoning field)
+        if (message.contains("reasoning") && !message["reasoning"].is_null()) {
+          std::string reasoning = message["reasoning"].get<std::string>();
+          if (!reasoning.empty()) {
+            // If content is empty but reasoning has content, use reasoning as the main content
+            if (content.empty()) {
+              content = reasoning;
+            } else {
+              // If both exist, append reasoning as thinking content (for display purposes)
+              // This handles cases where both fields are populated
+              content = content + "\n\n[Reasoning: " + reasoning + "]";
+            }
+          }
+        }
+
+        if (!content.empty()) {
+          msg.add_text(content);
         }
 
         // Parse tool calls
@@ -411,7 +431,16 @@ void OpenAIProvider::parse_sse_event(const std::string& data, StreamCallback& ca
     if (delta.contains("reasoning_content") && !delta["reasoning_content"].is_null()) {
       std::string thinking = delta["reasoning_content"].get<std::string>();
       if (!thinking.empty()) {
-        spdlog::trace("[OpenAI] Thinking delta: {}", thinking);
+        spdlog::trace("[OpenAI] Thinking delta (reasoning_content): {}", thinking);
+        callback(ThinkingDelta{thinking});
+      }
+    }
+
+    // Parse reasoning content (Ollama style - uses "reasoning" field)
+    if (delta.contains("reasoning") && !delta["reasoning"].is_null()) {
+      std::string thinking = delta["reasoning"].get<std::string>();
+      if (!thinking.empty()) {
+        spdlog::trace("[OpenAI] Thinking delta (reasoning): {}", thinking);
         callback(ThinkingDelta{thinking});
       }
     }

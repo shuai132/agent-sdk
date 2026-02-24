@@ -226,6 +226,26 @@ Config Config::from_env() {
     }
   }
 
+  // Read Ollama provider from environment (lowest priority)
+  const char* ollama_key = std::getenv("OLLAMA_API_KEY");
+  if (ollama_key && config.providers.empty()) {
+    const char* base_url = std::getenv("OLLAMA_BASE_URL");
+    const char* model = std::getenv("OLLAMA_MODEL");
+
+    ProviderConfig provider;
+    provider.name = "ollama";
+    provider.api_key = "";  // Ollama doesn't require API key
+    provider.base_url = base_url ? base_url : "http://localhost:11434";
+
+    config.providers["ollama"] = provider;
+
+    if (model) {
+      config.default_model = model;
+    } else if (!anthropic_key && !qwen_oauth && !std::getenv("OPENAI_API_KEY")) {
+      config.default_model = "deepseek-r1:7b";
+    }
+  }
+
   return config;
 }
 

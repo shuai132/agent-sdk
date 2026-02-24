@@ -179,7 +179,7 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
   // 构造卡片头部状态文本和耗时信息
   std::string status_text;
   std::string duration_text;
-  
+
   if (is_running) {
     if (!activity.empty()) {
       status_text = activity;  // Show subagent activity instead of "running..."
@@ -191,7 +191,7 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
   } else {
     status_text = "ok";
   }
-  
+
   // 添加耗时信息
   if (auto duration = group.call.duration_ms()) {
     duration_text = " ⏱ " + format_duration_ms(*duration);

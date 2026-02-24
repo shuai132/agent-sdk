@@ -159,6 +159,81 @@ TEST(ConfigTest, SaveAndLoadMcpServers) {
   fs::remove(tmp_path);
 }
 
+TEST(ConfigTest, FromEnvWithOllamaKey) {
+  // 保存原始环境变量
+  const char* orig_ollama = std::getenv("OLLAMA_API_KEY");
+  const char* orig_base_url = std::getenv("OLLAMA_BASE_URL");
+  const char* orig_model = std::getenv("OLLAMA_MODEL");
+  const char* orig_anthropic = std::getenv("ANTHROPIC_API_KEY");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+  const char* orig_qwen_oauth = std::getenv("QWEN_OAUTH");
+
+  // 清空其他 providers，仅设置 Ollama
+  unsetenv("ANTHROPIC_API_KEY");
+  unsetenv("OPENAI_API_KEY");
+  unsetenv("QWEN_OAUTH");
+  setenv("OLLAMA_API_KEY", "", 1);
+  setenv("OLLAMA_MODEL", "deepseek-r1:7b", 1);
+  unsetenv("OLLAMA_BASE_URL");
+
+  auto config = Config::from_env();
+
+  // 验证 Ollama provider 被配置
+  ASSERT_TRUE(config.providers.count("ollama") > 0);
+  EXPECT_EQ(config.providers["ollama"].name, "ollama");
+  EXPECT_EQ(config.providers["ollama"].api_key, "");
+  EXPECT_EQ(config.providers["ollama"].base_url, "http://localhost:11434");
+  EXPECT_EQ(config.default_model, "deepseek-r1:7b");
+
+  // 恢复环境变量
+  if (orig_ollama) {
+    setenv("OLLAMA_API_KEY", orig_ollama, 1);
+  } else {
+    unsetenv("OLLAMA_API_KEY");
+  }
+  if (orig_base_url) {
+    setenv("OLLAMA_BASE_URL", orig_base_url, 1);
+  } else {
+    unsetenv("OLLAMA_BASE_URL");
+  }
+  if (orig_model) {
+    setenv("OLLAMA_MODEL", orig_model, 1);
+  } else {
+    unsetenv("OLLAMA_MODEL");
+  }
+  if (orig_anthropic) setenv("ANTHROPIC_API_KEY", orig_anthropic, 1);
+  if (orig_openai) setenv("OPENAI_API_KEY", orig_openai, 1);
+  if (orig_qwen_oauth) setenv("QWEN_OAUTH", orig_qwen_oauth, 1);
+}
+
+TEST(ConfigTest, FromEnvOllamaOnlyWhenEmpty) {
+  // 保存原始环境变量
+  const char* orig_ollama = std::getenv("OLLAMA_API_KEY");
+  const char* orig_openai = std::getenv("OPENAI_API_KEY");
+
+  // 设置 OpenAI 和 Ollama，OpenAI 应该优先
+  setenv("OPENAI_API_KEY", "test-openai-key", 1);
+  setenv("OLLAMA_API_KEY", "", 1);
+
+  auto config = Config::from_env();
+
+  // OpenAI 应该被配置，Ollama 不应该（因为 providers 不为空）
+  ASSERT_TRUE(config.providers.count("openai") > 0);
+  EXPECT_FALSE(config.providers.count("ollama") > 0);
+
+  // 恢复环境变量
+  if (orig_ollama) {
+    setenv("OLLAMA_API_KEY", orig_ollama, 1);
+  } else {
+    unsetenv("OLLAMA_API_KEY");
+  }
+  if (orig_openai) {
+    setenv("OPENAI_API_KEY", orig_openai, 1);
+  } else {
+    unsetenv("OPENAI_API_KEY");
+  }
+}
+
 // --- Config::from_env() Tests ---
 
 TEST(ConfigTest, FromEnvWithNoProviders) {

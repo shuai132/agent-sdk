@@ -48,7 +48,10 @@ void print_usage(const char* program_name) {
   std::cout << "  OPENAI_API_KEY           OpenAI API key\n";
   std::cout << "  OPENAI_BASE_URL          Custom OpenAI API base URL\n";
   std::cout << "  OPENAI_MODEL             Custom OpenAI model name\n\n";
-  std::cout << "Priority: QWEN_OAUTH > OPENAI_API_KEY (when both are set)\n\n";
+  std::cout << "  OLLAMA_API_KEY           Set to '' (no API key required)\n";
+  std::cout << "  OLLAMA_BASE_URL          Custom Ollama base URL (default: http://localhost:11434)\n";
+  std::cout << "  OLLAMA_MODEL             Custom Ollama model name\n\n";
+  std::cout << "Priority: QWEN_OAUTH > OPENAI_API_KEY > OLLAMA_API_KEY\n\n";
   std::cout << "Examples:\n";
   std::cout << "  # Use Qwen Portal with OAuth (no API key needed)\n";
   std::cout << "  export QWEN_OAUTH=1\n";
@@ -59,6 +62,10 @@ void print_usage(const char* program_name) {
   std::cout << "  # Use OpenAI-compatible API\n";
   std::cout << "  export OPENAI_API_KEY=\"your-api-key\"\n";
   std::cout << "  export OPENAI_BASE_URL=\"https://api.example.com/v1\"\n";
+  std::cout << "  " << program_name << "\n\n";
+  std::cout << "  # Use Ollama (local models)\n";
+  std::cout << "  export OLLAMA_API_KEY=\"\"\n";
+  std::cout << "  export OLLAMA_MODEL=\"deepseek-r1:7b\"\n";
   std::cout << "  " << program_name << "\n\n";
   std::cout << "TUI Commands:\n";
   std::cout << "  /help, /h        Show help in TUI\n";
@@ -105,7 +112,8 @@ int main(int argc, char* argv[]) {
     std::cerr << "Please set one of the following environment variables:\n";
     std::cerr << "  • QWEN_OAUTH=1         — for Qwen Portal (OAuth, no API key needed)\n";
     std::cerr << "  • ANTHROPIC_API_KEY    — for Claude models\n";
-    std::cerr << "  • OPENAI_API_KEY       — for OpenAI/compatible models\n\n";
+    std::cerr << "  • OPENAI_API_KEY       — for OpenAI/compatible models\n";
+    std::cerr << "  • OLLAMA_API_KEY=\"\"    — for Ollama local models (no API key needed)\n\n";
     std::cerr << "Run '" << argv[0] << " --help' for more information.\n";
     return 1;
   }

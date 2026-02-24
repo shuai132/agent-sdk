@@ -89,6 +89,7 @@ add_library(${AGENT_SDK_NAME}
         src/llm/provider.cpp
         src/llm/anthropic.cpp
         src/llm/openai.cpp
+        src/llm/ollama.cpp
 
         # Tool system
         src/tool/registry.cpp
@@ -165,6 +166,12 @@ if (AGENT_BUILD_EXAMPLES)
 
     add_executable(${AGENT_SDK_NAME}_test_working_dir examples/test_working_dir.cpp)
     target_link_libraries(${AGENT_SDK_NAME}_test_working_dir PRIVATE ${AGENT_SDK_NAME})
+
+    add_executable(${AGENT_SDK_NAME}_ollama_test examples/ollama_test.cpp)
+    target_link_libraries(${AGENT_SDK_NAME}_ollama_test PRIVATE ${AGENT_SDK_NAME})
+    
+    add_executable(${AGENT_SDK_NAME}_test_reasoning examples/test_reasoning.cpp)
+    target_link_libraries(${AGENT_SDK_NAME}_test_reasoning PRIVATE ${AGENT_SDK_NAME})
 
     if (AGENT_PLUGIN_QWEN)
         add_executable(${AGENT_SDK_NAME}_qwen_oauth_test examples/qwen_oauth_test.cpp)
