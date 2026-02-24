@@ -479,21 +479,32 @@ void Session::execute_tool_calls() {
   auto tool_calls = last_msg.tool_calls();
   if (tool_calls.empty()) return;
 
-  spdlog::debug("[Session {}] Executing {} tool call(s)", id_, tool_calls.size());
+  spdlog::debug("[Session {}] Executing {} tool call(s) concurrently", id_, tool_calls.size());
 
   state_ = SessionState::WaitingForTool;
 
   // Create user message for tool results
   Message result_msg(Role::User, "");
-
+  
+  // Structure to hold tool execution state
+  struct ToolExecution {
+    ToolCallPart* tool_call;
+    std::shared_ptr<Tool> tool;
+    ToolContext context;
+    std::future<ToolResult> future;
+    bool started = false;
+  };
+  
+  std::vector<ToolExecution> executions;
+  
+  // Phase 1: Validate and prepare all tool executions
   for (auto* tc : tool_calls) {
     if (tc->completed) continue;
 
-    spdlog::debug("[Session {}] Executing tool call: name={}, args={}", id_, tc->name, tc->arguments.dump());
+    spdlog::debug("[Session {}] Preparing tool call: name={}, args={}", id_, tc->name, tc->arguments.dump());
 
     // Check for doom loop
     if (detect_doom_loop(tc->name, tc->arguments)) {
-      // Would need permission check here
       spdlog::warn("[Session {}] Potential doom loop detected for tool: {}", id_, tc->name);
     }
 
@@ -535,7 +546,7 @@ void Session::execute_tool_calls() {
       PermissionManager::instance().grant(tc->name);
     }
 
-    // Build context
+    // Build context for each tool call
     ToolContext ctx;
     ctx.session_id = id_;
     ctx.message_id = last_msg.id();
@@ -558,50 +569,75 @@ void Session::execute_tool_calls() {
       }
     };
 
-    // Execute tool
-    tc->started = true;
-
+    // Add to execution list for concurrent processing
+    executions.emplace_back();
+    auto& execution = executions.back();
+    execution.tool_call = tc;
+    execution.tool = tool;
+    execution.context = std::move(ctx);
+  }
+  
+  // Phase 2: Launch all tool executions concurrently
+  spdlog::debug("[Session {}] Launching {} tool execution(s) concurrently", id_, executions.size());
+  for (auto& exec : executions) {
     try {
-      spdlog::debug("[Session {}] Calling tool: {} with args: {}", id_, tc->name, tc->arguments.dump());
-      auto future_result = tool->execute(tc->arguments, ctx);
-      auto result = future_result.get();
-
-      spdlog::debug("[Session {}] Tool {} completed, is_error={}, output length={}", id_, tc->name, result.is_error, result.output.size());
+      spdlog::debug("[Session {}] Starting concurrent tool: {}", id_, exec.tool_call->name);
+      exec.future = exec.tool->execute(exec.tool_call->arguments, exec.context);
+      exec.tool_call->started = true;
+      exec.started = true;
+    } catch (const std::exception& e) {
+      spdlog::error("[Session {}] Failed to start tool {}: {}", id_, exec.tool_call->name, e.what());
+      // Handle as immediate error result
+      std::string error_msg = std::string("Failed to start: ") + e.what();
+      result_msg.add_tool_result(exec.tool_call->id, exec.tool_call->name, error_msg, true);
+      exec.tool_call->completed = true;
+    }
+  }
+  
+  // Phase 3: Collect all results as they complete
+  for (auto& exec : executions) {
+    if (!exec.started) continue;  // Skip tools that failed to start
+    
+    try {
+      spdlog::debug("[Session {}] Waiting for tool result: {}", id_, exec.tool_call->name);
+      auto result = exec.future.get();
+      
+      spdlog::debug("[Session {}] Tool {} completed, is_error={}, output length={}", 
+                    id_, exec.tool_call->name, result.is_error, result.output.size());
 
       // Truncate if needed
-      auto truncated = Truncate::save_and_truncate(result.output, tc->name);
+      auto truncated = Truncate::save_and_truncate(result.output, exec.tool_call->name);
 
       // Sanitize invalid UTF-8 bytes to prevent JSON serialization errors
       auto safe_content = sanitize_utf8(truncated.content);
 
-      result_msg.add_tool_result(tc->id, tc->name, safe_content, result.is_error);
+      result_msg.add_tool_result(exec.tool_call->id, exec.tool_call->name, safe_content, result.is_error);
 
       // Notify tool result callback
       if (on_tool_result_) {
-        on_tool_result_(tc->id, tc->name, safe_content, result.is_error);
+        on_tool_result_(exec.tool_call->id, exec.tool_call->name, safe_content, result.is_error);
       }
 
-      Bus::instance().publish(events::ToolCallCompleted{id_, tc->id, tc->name, !result.is_error});
+      Bus::instance().publish(events::ToolCallCompleted{id_, exec.tool_call->id, exec.tool_call->name, !result.is_error});
 
     } catch (const std::exception& e) {
       std::string error_msg = std::string("Error: ") + e.what();
-      spdlog::error("[Session {}] Tool {} exception: {}", id_, tc->name, e.what());
-      result_msg.add_tool_result(tc->id, tc->name, error_msg, true);
+      spdlog::error("[Session {}] Tool {} exception: {}", id_, exec.tool_call->name, e.what());
+      result_msg.add_tool_result(exec.tool_call->id, exec.tool_call->name, error_msg, true);
 
       // Notify tool result callback
       if (on_tool_result_) {
-        on_tool_result_(tc->id, tc->name, error_msg, true);
+        on_tool_result_(exec.tool_call->id, exec.tool_call->name, error_msg, true);
       }
 
-      Bus::instance().publish(events::ToolCallCompleted{id_, tc->id, tc->name, false});
+      Bus::instance().publish(events::ToolCallCompleted{id_, exec.tool_call->id, exec.tool_call->name, false});
     }
 
-    tc->completed = true;
-
-    spdlog::debug("[Session {}] Tool call completed: {}", id_, tc->name);
+    exec.tool_call->completed = true;
+    spdlog::debug("[Session {}] Tool call completed: {}", id_, exec.tool_call->name);
 
     // Track for doom loop detection
-    recent_tool_calls_.push_back({tc->name, tc->arguments.dump()});
+    recent_tool_calls_.push_back({exec.tool_call->name, exec.tool_call->arguments.dump()});
     if (recent_tool_calls_.size() > 10) {
       recent_tool_calls_.erase(recent_tool_calls_.begin());
     }
