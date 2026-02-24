@@ -34,6 +34,9 @@ std::future<LlmResponse> OpenAIProvider::complete(const LlmRequest& request) {
   options.method = "POST";
   options.body = body.dump();
   options.headers = {{"Content-Type", "application/json"}, {"Authorization", auth_header}};
+  options.timeout = std::chrono::seconds(120);        // 增加超时时间到2分钟
+  options.max_retries = 3;                            // 最多重试3次
+  options.retry_delay = std::chrono::milliseconds(2000); // 重试间隔2秒
 
   // Add organization header if configured
   if (config_.organization && !config_.organization->empty()) {
@@ -163,6 +166,9 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   options.method = "POST";
   options.body = body.dump();
   options.headers = headers;
+  options.timeout = std::chrono::seconds(180);        // 流式请求更长超时时间（3分钟）
+  options.max_retries = 2;                            // 流式请求重试次数少一些
+  options.retry_delay = std::chrono::milliseconds(3000); // 重试间隔3秒
 
   spdlog::debug("[OpenAI] Request URL: {}/v1/chat/completions", base_url_);
   spdlog::debug("[OpenAI] Request model: {}", request.model);

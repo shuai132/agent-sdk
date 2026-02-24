@@ -2,9 +2,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <fstream>
 #include <functional>
 #include <sstream>
+#include <thread>
 
 #include "bus/bus.hpp"
 #include "llm/anthropic.hpp"
@@ -217,6 +219,9 @@ void Session::run_loop() {
   abort_signal_->store(false);
   state_ = SessionState::Running;
 
+  // Reset retry state for new run
+  retry_state_.current_attempt = 0;
+
   spdlog::debug("[Session {}] Starting run loop", id_);
 
   int step = 0;
@@ -426,6 +431,15 @@ void Session::process_stream() {
   // Check for errors
   if (error_message) {
     spdlog::error("[Session {}] LLM stream error: {}", id_, *error_message);
+    
+    // 检查是否应该重试
+    if (should_retry_on_error(*error_message)) {
+      if (retry_on_error(*error_message)) {
+        return; // 重试成功，继续执行
+      }
+    }
+    
+    // 重试失败或不应重试，设置错误状态
     if (on_error_) {
       on_error_(*error_message);
     }
@@ -957,6 +971,79 @@ void Session::sync_to_store() {
   }
 
   json_store->save_session(meta);
+}
+
+bool Session::should_retry_on_error(const std::string& error_msg) {
+  // 检查是否达到最大重试次数
+  if (retry_state_.current_attempt >= retry_state_.max_retries) {
+    return false;
+  }
+
+  // 检查错误类型是否可以重试
+  // 超时错误
+  if (error_msg.find("timed out") != std::string::npos || 
+      error_msg.find("Request timed out") != std::string::npos) {
+    return true;
+  }
+  
+  // 网络连接错误
+  if (error_msg.find("Network error") != std::string::npos ||
+      error_msg.find("Connection") != std::string::npos) {
+    return true;
+  }
+  
+  // 临时服务器错误 (5xx)
+  if (error_msg.find("HTTP error: 5") != std::string::npos) {
+    return true;
+  }
+  
+  // 速率限制错误 (429)
+  if (error_msg.find("HTTP error: 429") != std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
+bool Session::retry_on_error(const std::string& error_msg) {
+  auto now = std::chrono::steady_clock::now();
+  
+  // 确保重试间隔至少为3秒（避免过于频繁的重试）
+  if (retry_state_.current_attempt > 0) {
+    auto elapsed = now - retry_state_.last_retry_time;
+    if (elapsed < std::chrono::seconds(3)) {
+      std::this_thread::sleep_for(std::chrono::seconds(3) - elapsed);
+    }
+  }
+  
+  retry_state_.current_attempt++;
+  retry_state_.last_retry_time = std::chrono::steady_clock::now();
+  
+  // 指数退避：每次重试时间间隔增加
+  auto backoff_seconds = std::min(30, static_cast<int>(std::pow(2, retry_state_.current_attempt - 1) * 3));
+  
+  spdlog::warn("[Session {}] Retrying after error (attempt {}/{}): {}", 
+               id_, retry_state_.current_attempt, retry_state_.max_retries, error_msg);
+  spdlog::info("[Session {}] Waiting {}s before retry...", id_, backoff_seconds);
+  
+  std::this_thread::sleep_for(std::chrono::seconds(backoff_seconds));
+  
+  // 保存当前消息数量，以便重试时避免重复添加
+  retry_state_.last_message_count = messages_.size();
+  
+  try {
+    // 重新调用 process_stream，但不添加新的用户消息
+    spdlog::info("[Session {}] Starting retry attempt {}", id_, retry_state_.current_attempt);
+    process_stream();
+    
+    // 重试成功，重置重试状态
+    retry_state_.current_attempt = 0;
+    return true;
+    
+  } catch (const std::exception& e) {
+    spdlog::error("[Session {}] Retry attempt {} failed: {}", id_, retry_state_.current_attempt, e.what());
+    return false;
+  }
 }
 
 }  // namespace agent

@@ -58,13 +58,13 @@ static void setup_callbacks(std::shared_ptr<Session>& session) {
     std::cout << text << std::flush;
   });
 
-  session->on_tool_call([after_tool](const std::string& tool, const json& args) {
+  session->on_tool_call([after_tool](const std::string& tool_call_id, const std::string& tool, const json& args) {
     *after_tool = false;  // 工具开始执行
     std::cout << "\n[Calling tool: " << tool << "]\n";
     std::cout << "[Arguments: " << args.dump(2) << "]\n";
   });
 
-  session->on_tool_result([after_tool](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([after_tool](const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error) {
     std::cout << "\n[Tool " << tool << " " << (is_error ? "failed" : "completed") << "]\n";
     // 截断过长的输出
     if (result.size() > 500) {

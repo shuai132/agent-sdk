@@ -804,10 +804,10 @@ TEST_F(AgentCliE2ETest, SimpleChat) {
   session->on_stream([&log](const std::string& text) {
     log.append_stream(text);
   });
-  session->on_tool_call([&log](const std::string& tool, const agent::json& args) {
+  session->on_tool_call([&log](const std::string& tool_call_id, const std::string& tool, const agent::json& args) {
     log.push({EntryKind::ToolCall, tool, args.dump()});
   });
-  session->on_tool_result([&log](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([&log](const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error) {
     log.push({EntryKind::ToolResult, tool + (is_error ? " [FAILED]" : " [OK]"), result});
   });
   session->on_error([&log](const std::string& error) {
@@ -865,12 +865,12 @@ TEST_F(AgentCliE2ETest, ToolCallChat) {
   session->on_stream([&log](const std::string& text) {
     log.append_stream(text);
   });
-  session->on_tool_call([&log, &panel](const std::string& tool, const agent::json& args) {
+  session->on_tool_call([&log, &panel](const std::string& tool_call_id, const std::string& tool, const agent::json& args) {
     std::string args_str = args.dump();
     panel.start_tool(tool, args_str);
     log.push({EntryKind::ToolCall, tool, args_str});
   });
-  session->on_tool_result([&log, &panel](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([&log, &panel](const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error) {
     std::string summary = result.size() > 200 ? result.substr(0, 200) + "..." : result;
     panel.finish_tool(tool, summary, is_error);
     log.push({EntryKind::ToolResult, tool + (is_error ? " [FAILED]" : " [OK]"), summary});
@@ -923,13 +923,13 @@ TEST_F(AgentCliE2ETest, SubagentDemo) {
   session->on_stream([&log](const std::string& text) {
     log.append_stream(text);
   });
-  session->on_tool_call([&log, &panel](const std::string& tool, const agent::json& args) {
+  session->on_tool_call([&log, &panel](const std::string& tool_call_id, const std::string& tool, const agent::json& args) {
     std::string args_str = args.dump();
     if (args_str.size() > 200) args_str = args_str.substr(0, 200) + "...";
     panel.start_tool(tool, args_str);
     log.push({EntryKind::ToolCall, tool, args_str});
   });
-  session->on_tool_result([&log, &panel](const std::string& tool, const std::string& result, bool is_error) {
+  session->on_tool_result([&log, &panel](const std::string& tool_call_id, const std::string& tool, const std::string& result, bool is_error) {
     std::string summary = result.size() > 300 ? result.substr(0, 300) + "..." : result;
     panel.finish_tool(tool, summary, is_error);
     log.push({EntryKind::ToolResult, tool + (is_error ? " [FAILED]" : " [OK]"), summary});

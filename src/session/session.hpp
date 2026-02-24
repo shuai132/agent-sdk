@@ -181,6 +181,10 @@ class Session : public std::enable_shared_from_this<Session> {
   // Doom loop detection
   bool detect_doom_loop(const std::string& tool_name, const json& args);
 
+  // Retry mechanism helper methods
+  bool should_retry_on_error(const std::string& error_msg);
+  bool retry_on_error(const std::string& error_msg);
+
   // Sync session metadata to persistent store
   void sync_to_store();
 
@@ -219,6 +223,15 @@ class Session : public std::enable_shared_from_this<Session> {
     std::string args_hash;
   };
   std::vector<ToolCallRecord> recent_tool_calls_;
+
+  // Retry mechanism
+  struct RetryState {
+    int max_retries = 3;           // 最大重试次数
+    int current_attempt = 0;       // 当前尝试次数
+    size_t last_message_count = 0; // 重试前的消息数量（用于避免重复添加）
+    std::chrono::steady_clock::time_point last_retry_time;
+  };
+  RetryState retry_state_;
 
   // Child sessions
   std::vector<std::weak_ptr<Session>> children_;

@@ -73,7 +73,7 @@ int main() {
     full_response += text;
   });
 
-  session->on_tool_call([](const std::string& tool, const json& args) {
+  session->on_tool_call([](const std::string& tool_call_id, const std::string& tool, const json& args) {
     std::cout << "\n[Tool: " << tool << " Args: " << args.dump() << "]\n";
   });
 
