@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,20 @@ struct ChatEntry {
   std::string detail;  // 额外详情 (如参数/结果)
   std::string tool_call_id;  // Tool call ID for matching subagent events
   std::vector<ChatEntry> nested_entries;  // Nested entries for subagent progress
+  
+  // 时间统计
+  std::chrono::system_clock::time_point created_at = std::chrono::system_clock::now();
+  std::optional<std::chrono::system_clock::time_point> started_at;  // 工具开始执行时间
+  std::optional<std::chrono::system_clock::time_point> completed_at; // 工具完成时间
+  
+  // 获取耗时（毫秒）
+  std::optional<int64_t> duration_ms() const {
+    if (started_at && completed_at) {
+      auto duration = *completed_at - *started_at;
+      return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    }
+    return std::nullopt;
+  }
 };
 
 // ============================================================
@@ -58,6 +73,10 @@ class ChatLog {
 
   // Update activity status for a tool call (for subagent progress)
   void update_tool_activity(const std::string& tool_call_id, const std::string& activity);
+
+  // Update timing for a tool call
+  void update_tool_started(const std::string& tool_call_id);
+  void update_tool_completed(const std::string& tool_call_id);
 
  private:
   mutable std::mutex mu_;
@@ -142,6 +161,7 @@ std::string extract_file_path_prefix(const std::string& input);
 std::string truncate_text(const std::string& s, size_t max_len);
 std::vector<std::string> split_lines(const std::string& text);
 std::string format_time(const std::chrono::system_clock::time_point& ts);
+std::string format_duration_ms(int64_t duration_ms);  // 格式化耗时，如 "1.2s", "450ms"
 std::string format_tokens(int64_t tokens);
 
 // ============================================================
@@ -186,6 +206,12 @@ class AgentState {
   AgentMode mode() const;
   void toggle_mode();
 
+  // 会话时间统计
+  void start_session_timer();
+  void pause_session_timer();
+  void resume_session_timer();
+  std::optional<int64_t> session_duration_ms() const;
+
   std::string status_text() const;
 
  private:
@@ -199,6 +225,11 @@ class AgentState {
   std::string model_;
   std::string session_id_;
   std::string activity_;
+  
+  // 会话时间统计
+  std::optional<std::chrono::steady_clock::time_point> session_start_time_;
+  std::optional<std::chrono::steady_clock::time_point> session_pause_time_;
+  int64_t session_accumulated_ms_ = 0;  // 累积的会话时间（毫秒）
 };
 
 }  // namespace agent_cli

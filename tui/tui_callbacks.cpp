@@ -54,6 +54,8 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     std::string args_str = args.dump(2);
     state.tool_panel.start_tool(tool, args_str);
     state.chat_log.push({EntryKind::ToolCall, tool, args_str, tool_call_id});
+    // 记录工具开始执行时间
+    state.chat_log.update_tool_started(tool_call_id);
     state.agent_state.set_activity("Running " + tool + "...");
     refresh_fn();
   });
@@ -62,6 +64,8 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
     std::string summary = result;
     if (summary.size() > 2000) summary = summary.substr(0, 2000) + "\n...(" + std::to_string(result.size()) + " chars total)";
     state.tool_panel.finish_tool(tool, summary, is_error);
+    // 记录工具完成时间
+    state.chat_log.update_tool_completed(tool_call_id);
     state.chat_log.push({EntryKind::ToolResult, tool + (is_error ? " ✗" : " ✓"), summary, tool_call_id});
     state.agent_state.set_activity("Thinking...");
     refresh_fn();
@@ -103,6 +107,7 @@ void setup_tui_callbacks(AppState& state, AppContext& ctx) {
       state.chat_log.push({EntryKind::SystemInfo, "Session ended: " + agent::to_string(reason), ""});
     }
     state.agent_state.set_activity("");
+    state.agent_state.pause_session_timer();  // 暂停计时器
     refresh_fn();
   });
 

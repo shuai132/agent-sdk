@@ -115,6 +115,26 @@ void ChatLog::update_tool_activity(const std::string& tool_call_id, const std::s
   }
 }
 
+void ChatLog::update_tool_started(const std::string& tool_call_id) {
+  std::lock_guard<std::mutex> lock(mu_);
+  for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+    if (it->kind == EntryKind::ToolCall && it->tool_call_id == tool_call_id) {
+      it->started_at = std::chrono::system_clock::now();
+      return;
+    }
+  }
+}
+
+void ChatLog::update_tool_completed(const std::string& tool_call_id) {
+  std::lock_guard<std::mutex> lock(mu_);
+  for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+    if (it->kind == EntryKind::ToolCall && it->tool_call_id == tool_call_id) {
+      it->completed_at = std::chrono::system_clock::now();
+      return;
+    }
+  }
+}
+
 // ============================================================
 // ToolPanel
 // ============================================================
@@ -239,6 +259,23 @@ std::string format_time(const std::chrono::system_clock::time_point& ts) {
   return buf;
 }
 
+std::string format_duration_ms(int64_t duration_ms) {
+  if (duration_ms < 1000) {
+    return std::to_string(duration_ms) + "ms";
+  } else if (duration_ms < 60000) {  // < 1分钟
+    double seconds = static_cast<double>(duration_ms) / 1000.0;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.1fs", seconds);
+    return buf;
+  } else {  // >= 1分钟
+    int minutes = duration_ms / 60000;
+    double remaining_seconds = static_cast<double>(duration_ms % 60000) / 1000.0;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%dm%.0fs", minutes, remaining_seconds);
+    return buf;
+  }
+}
+
 std::string format_tokens(int64_t tokens) {
   if (tokens < 1000) return std::to_string(tokens);
   if (tokens < 1000000) {
@@ -356,9 +393,56 @@ void AgentState::toggle_mode() {
   set_mode(current == AgentMode::Build ? AgentMode::Plan : AgentMode::Build);
 }
 
+void AgentState::start_session_timer() {
+  std::lock_guard<std::mutex> lock(mu_);
+  session_start_time_ = std::chrono::steady_clock::now();
+  session_pause_time_.reset();
+  session_accumulated_ms_ = 0;
+}
+
+void AgentState::pause_session_timer() {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (session_start_time_ && !session_pause_time_) {
+    session_pause_time_ = std::chrono::steady_clock::now();
+    auto elapsed = *session_pause_time_ - *session_start_time_;
+    session_accumulated_ms_ += std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+  }
+}
+
+void AgentState::resume_session_timer() {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (session_pause_time_) {
+    session_start_time_ = std::chrono::steady_clock::now();
+    session_pause_time_.reset();
+  }
+}
+
+std::optional<int64_t> AgentState::session_duration_ms() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!session_start_time_) {
+    return std::nullopt;
+  }
+  
+  int64_t total_ms = session_accumulated_ms_;
+  
+  if (!session_pause_time_) {
+    // 当前正在计时中
+    auto current_elapsed = std::chrono::steady_clock::now() - *session_start_time_;
+    total_ms += std::chrono::duration_cast<std::chrono::milliseconds>(current_elapsed).count();
+  }
+  
+  return total_ms;
+}
+
 std::string AgentState::status_text() const {
   std::string s = "Model: " + model();
   s += " | Tokens: " + format_tokens(input_tokens()) + "in/" + format_tokens(output_tokens()) + "out";
+  
+  // 添加会话耗时
+  if (auto duration = session_duration_ms()) {
+    s += " | Time: " + format_duration_ms(*duration);
+  }
+  
   s += is_running() ? " | [Running...]" : " | [Ready]";
   return s;
 }

@@ -176,8 +176,10 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
   // 解析参数为 key-value 格式
   auto args_kv = parse_args_to_kv(clean_detail);
 
-  // 构造卡片头部状态文本
+  // 构造卡片头部状态文本和耗时信息
   std::string status_text;
+  std::string duration_text;
+  
   if (is_running) {
     if (!activity.empty()) {
       status_text = activity;  // Show subagent activity instead of "running..."
@@ -189,12 +191,18 @@ Element render_tool_group(const ToolGroup& group, bool expanded) {
   } else {
     status_text = "ok";
   }
+  
+  // 添加耗时信息
+  if (auto duration = group.call.duration_ms()) {
+    duration_text = " ⏱ " + format_duration_ms(*duration);
+  }
 
   // 卡片头部行
   auto header_line = hbox({
       text(" " + status_icon + "  ") | color(status_color),
       text(group.call.text) | bold,
       text("  " + status_text) | dim,
+      text(duration_text) | dim | color(Color::Cyan),
   });
 
   // 构建卡片内容
@@ -422,6 +430,11 @@ Element build_status_bar(const AppState& state) {
     context_color = Color::Yellow;
   }
 
+  std::string session_time;
+  if (auto duration = state.agent_state.session_duration_ms()) {
+    session_time = "⏱" + format_duration_ms(*duration) + " ";
+  }
+
   return hbox({
       text(" " + std::filesystem::current_path().filename().string() + " ") | bold | color(Color::White) | bgcolor(Color::Blue),
       text(" "),
@@ -430,7 +443,8 @@ Element build_status_bar(const AppState& state) {
       text(format_tokens(state.agent_state.input_tokens()) + "↑ " + format_tokens(state.agent_state.output_tokens()) + "↓") | dim,
       text("  "),
       text("ctx:" + context_str) | color(context_color),
-      text(" "),
+      text("  "),
+      text(session_time) | dim | color(Color::Cyan),
       text(state.agent_state.is_running() ? " ● Running " : " ● Ready ") | color(Color::White) |
           bgcolor(state.agent_state.is_running() ? Color::Yellow : Color::Green),
   });
