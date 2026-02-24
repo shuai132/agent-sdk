@@ -89,6 +89,13 @@ Session::Session(asio::io_context& io_ctx, const Config& config, AgentType agent
       spdlog::info("Injected {} instruction file(s) into system prompt", instruction_files.size());
     }
   }
+
+  // Inject current working directory context
+  if (!agent_config_.system_prompt.empty()) {
+    agent_config_.system_prompt += "\n\n";
+  }
+  agent_config_.system_prompt += "当前工作目录：" + config.working_dir.string() + "\n";
+  agent_config_.system_prompt += "注意：当操作涉及文件或目录时，如未明确指定绝对路径，则默认相对于此工作目录进行。";
 }
 
 Session::~Session() {

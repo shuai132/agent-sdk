@@ -163,6 +163,9 @@ if (AGENT_BUILD_EXAMPLES)
     add_executable(${AGENT_SDK_NAME}_tool_test examples/tool_test.cpp)
     target_link_libraries(${AGENT_SDK_NAME}_tool_test PRIVATE ${AGENT_SDK_NAME})
 
+    add_executable(${AGENT_SDK_NAME}_test_working_dir examples/test_working_dir.cpp)
+    target_link_libraries(${AGENT_SDK_NAME}_test_working_dir PRIVATE ${AGENT_SDK_NAME})
+
     if (AGENT_PLUGIN_QWEN)
         add_executable(${AGENT_SDK_NAME}_qwen_oauth_test examples/qwen_oauth_test.cpp)
         target_link_libraries(${AGENT_SDK_NAME}_qwen_oauth_test PRIVATE ${AGENT_SDK_NAME})
