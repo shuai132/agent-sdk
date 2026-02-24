@@ -169,50 +169,35 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   spdlog::debug("[OpenAI] Request messages count: {}", request.messages.size());
   spdlog::debug("[OpenAI] Request tools count: {}", request.tools.size());
 
-  // Log full request body at info level for debugging
+  // Log full request details at info level for debugging (similar to Anthropic format)
   spdlog::info("[OpenAI] ===== Full LLM Request =====");
-  auto body_json = json::parse(options.body);
 
-  // Log system message (first message if role=system)
-  if (body_json.contains("messages") && !body_json["messages"].empty()) {
-    auto& first_msg = body_json["messages"][0];
-    if (first_msg.contains("role") && first_msg["role"] == "system") {
-      std::string system_content = first_msg.value("content", "");
-      spdlog::info("[OpenAI] System prompt ({} chars):\n{}", system_content.size(), system_content);
-    }
+  // Log system prompt
+  if (!request.system_prompt.empty()) {
+    spdlog::info("[OpenAI] System prompt ({} chars):\n{}", request.system_prompt.size(), request.system_prompt);
   }
 
   // Log tools with their descriptions
-  if (body_json.contains("tools")) {
-    spdlog::info("[OpenAI] Tools ({}):", body_json["tools"].size());
-    for (const auto& tool : body_json["tools"]) {
-      if (tool.contains("function")) {
-        std::string name = tool["function"].value("name", "?");
-        std::string desc = tool["function"].value("description", "");
-        spdlog::info("[OpenAI]   - {}: {}", name, desc);
-      }
+  if (!request.tools.empty()) {
+    spdlog::info("[OpenAI] Tools ({}):", request.tools.size());
+    for (const auto& tool : request.tools) {
+      spdlog::info("[OpenAI]   - {}: {}", tool->id(), tool->description());
     }
   }
 
-  // Log conversation messages (excluding system)
-  if (body_json.contains("messages")) {
-    spdlog::info("[OpenAI] Messages ({}):", body_json["messages"].size());
-    for (size_t i = 0; i < body_json["messages"].size(); i++) {
-      auto& msg = body_json["messages"][i];
-      std::string role = msg.value("role", "?");
-      if (role == "system") continue;  // Already logged above
-
-      std::string content;
-      if (msg["content"].is_string()) {
-        content = msg["content"].get<std::string>();
-      } else {
-        content = msg["content"].dump();
-      }
-      spdlog::info("[OpenAI]   [{}] {}: {}", i, role, content);
+  // Log conversation messages
+  spdlog::info("[OpenAI] Messages ({}):", request.messages.size());
+  for (size_t i = 0; i < request.messages.size(); i++) {
+    const auto& msg = request.messages[i];
+    std::string content = msg.text();
+    if (content.size() > 200) {
+      content = content.substr(0, 200) + "... (truncated)";
     }
+    spdlog::info("[OpenAI]   [{}] {}: {}", i + 1, to_string(msg.role()), content);
   }
 
   // Log complete request body
+  auto body_json = json::parse(options.body);
   spdlog::info("[OpenAI] Request body ({} bytes):\n{}", options.body.size(), body_json.dump(2));
   spdlog::info("[OpenAI] ===== End Request =====");
 

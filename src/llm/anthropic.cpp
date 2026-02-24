@@ -131,15 +131,15 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
   spdlog::debug("[Anthropic] Request model: {}", request.model);
   spdlog::debug("[Anthropic] Request messages count: {}", request.messages.size());
   spdlog::debug("[Anthropic] Request tools count: {}", request.tools.size());
-  
+
   // Log full request details at info level for debugging (similar to OpenAI format)
   spdlog::info("[Anthropic] ===== Full LLM Request =====");
-  
+
   // Log system prompt
   if (!request.system_prompt.empty()) {
     spdlog::info("[Anthropic] System prompt ({} chars):\n{}", request.system_prompt.size(), request.system_prompt);
   }
-  
+
   // Log tools with their descriptions
   if (!request.tools.empty()) {
     spdlog::info("[Anthropic] Tools ({}):", request.tools.size());
@@ -147,7 +147,7 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
       spdlog::info("[Anthropic]   - {}: {}", tool->id(), tool->description());
     }
   }
-  
+
   // Log conversation messages
   spdlog::info("[Anthropic] Messages ({}):", request.messages.size());
   for (size_t i = 0; i < request.messages.size(); i++) {
