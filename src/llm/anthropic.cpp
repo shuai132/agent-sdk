@@ -131,6 +131,35 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
   spdlog::debug("[Anthropic] Request model: {}", request.model);
   spdlog::debug("[Anthropic] Request messages count: {}", request.messages.size());
   spdlog::debug("[Anthropic] Request tools count: {}", request.tools.size());
+  
+  // Log full request details at info level for debugging (similar to OpenAI format)
+  spdlog::info("[Anthropic] ===== Full LLM Request =====");
+  
+  // Log system prompt
+  if (!request.system_prompt.empty()) {
+    spdlog::info("[Anthropic] System prompt ({} chars):\n{}", request.system_prompt.size(), request.system_prompt);
+  }
+  
+  // Log tools with their descriptions
+  if (!request.tools.empty()) {
+    spdlog::info("[Anthropic] Tools ({}):", request.tools.size());
+    for (const auto& tool : request.tools) {
+      spdlog::info("[Anthropic]   - {}: {}", tool->id(), tool->description());
+    }
+  }
+  
+  // Log conversation messages
+  spdlog::info("[Anthropic] Messages ({}):", request.messages.size());
+  for (size_t i = 0; i < request.messages.size(); i++) {
+    const auto& msg = request.messages[i];
+    std::string content = msg.text();
+    if (content.size() > 200) {
+      content = content.substr(0, 200) + "... (truncated)";
+    }
+    spdlog::info("[Anthropic]   [{}] {}: {}", i + 1, to_string(msg.role()), content);
+  }
+  spdlog::info("[Anthropic] ===== End Request =====");
+  
   spdlog::debug("[Anthropic] Request body: {}", options.body);
 
   auto shared_callback = std::make_shared<StreamCallback>(std::move(callback));
