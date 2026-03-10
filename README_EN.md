@@ -223,7 +223,7 @@ export ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 # Option 3: OpenAI (or compatible API)
 export OPENAI_API_KEY="your-api-key"
 # Optional overrides:
-export OPENAI_BASE_URL="https://api.openai.com"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_MODEL="gpt-4o"
 
 # Option 4: Ollama (Local models, privacy-first)

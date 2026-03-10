@@ -48,7 +48,7 @@ std::future<LlmResponse> OpenAIProvider::complete(const LlmRequest& request) {
     options.headers[key] = value;
   }
 
-  http_client_.request(base_url_ + "/v1/chat/completions", options, [promise](net::HttpResponse response) {
+  http_client_.request(base_url_ + "/chat/completions", options, [promise](net::HttpResponse response) {
     LlmResponse result;
 
     if (!response.error.empty()) {
@@ -190,7 +190,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
   options.max_retries = 2;                                // 流式请求重试次数少一些
   options.retry_delay = std::chrono::milliseconds(3000);  // 重试间隔3秒
 
-  spdlog::debug("[OpenAI] Request URL: {}/v1/chat/completions", base_url_);
+  spdlog::debug("[OpenAI] Request URL: {}/chat/completions", base_url_);
   spdlog::debug("[OpenAI] Request model: {}", request.model);
   spdlog::debug("[OpenAI] Request messages count: {}", request.messages.size());
   spdlog::debug("[OpenAI] Request tools count: {}", request.tools.size());
@@ -233,7 +233,7 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
 
   // Use streaming HTTP request for real-time SSE processing
   http_client_.request_stream(
-      base_url_ + "/v1/chat/completions", options,
+      base_url_ + "/chat/completions", options,
       [this, shared_callback, sse_buffer](const std::string& chunk) {
         // Accumulate chunk into SSE buffer and parse complete events
         spdlog::trace("[OpenAI] SSE chunk received ({} bytes): {}", chunk.size(), chunk.substr(0, std::min(chunk.size(), size_t(200))));
@@ -257,9 +257,13 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
               line.pop_back();
             }
 
+            // Support both "data: " (with space) and "data:" (without space)
             if (line.starts_with("data: ")) {
               if (!event_data.empty()) event_data += "\n";
               event_data += line.substr(6);
+            } else if (line.starts_with("data:")) {
+              if (!event_data.empty()) event_data += "\n";
+              event_data += line.substr(5);
             }
           }
 
@@ -268,12 +272,28 @@ void OpenAIProvider::stream(const LlmRequest& request, StreamCallback callback, 
           }
         }
       },
-      [shared_callback, shared_complete](int status_code, const std::string& error) {
+      [shared_callback, shared_complete, this](int status_code, const std::string& error) {
         spdlog::debug("[OpenAI] Stream completed: status={}, error={}", status_code, error.empty() ? "(none)" : error);
         if (!error.empty()) {
           StreamError err;
           err.message = error;
           (*shared_callback)(err);
+        }
+        // Emit ToolCallComplete for any pending tool calls (handles APIs that don't send [DONE])
+        // This is needed for Qwen Portal and other Anthropic-backed OpenAI-compatible APIs
+        if (!tool_calls_.empty()) {
+          spdlog::debug("[OpenAI] Stream ended without [DONE], emitting {} pending tool call(s)", tool_calls_.size());
+          for (auto& [index, tc] : tool_calls_) {
+            if (!tc.id.empty()) {
+              try {
+                json args = tc.args_json.empty() ? json::object() : json::parse(tc.args_json);
+                (*shared_callback)(ToolCallComplete{tc.id, tc.name, args});
+              } catch (...) {
+                (*shared_callback)(ToolCallComplete{tc.id, tc.name, json::object()});
+              }
+            }
+          }
+          tool_calls_.clear();
         }
         (*shared_complete)();
       });

@@ -216,7 +216,7 @@ export ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 # 方式三：OpenAI（或兼容 API）
 export OPENAI_API_KEY="your-api-key"
 # 可选覆盖：
-export OPENAI_BASE_URL="https://api.openai.com"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_MODEL="gpt-4o"
 
 # 方式四：Ollama（本地模型，隐私优先）
