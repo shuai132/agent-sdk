@@ -124,6 +124,7 @@ void AnthropicProvider::stream(const LlmRequest& request, StreamCallback callbac
 
   // Reset state
   tool_calls_.clear();
+  pending_input_usage_ = {};
 
   net::HttpOptions options;
   options.method = "POST";
@@ -290,14 +291,24 @@ void AnthropicProvider::parse_sse_event(const std::string& data, StreamCallback&
         finish.reason = FinishReason::Stop;
       }
 
+      // Merge input tokens from message_start with output tokens from message_delta
+      finish.usage = pending_input_usage_;
       if (j.contains("usage")) {
         finish.usage.output_tokens = j["usage"].value("output_tokens", 0);
       }
+      spdlog::debug("[Anthropic] FinishStep usage: input={}, output={}, cache_read={}, cache_write={}", finish.usage.input_tokens,
+                    finish.usage.output_tokens, finish.usage.cache_read_tokens, finish.usage.cache_write_tokens);
 
       callback(finish);
     } else if (type == "message_start") {
+      // message_start carries input token counts; save them for use in message_delta's FinishStep
       if (j.contains("message") && j["message"].contains("usage")) {
-        // Initial usage info (input tokens)
+        const auto& usage = j["message"]["usage"];
+        pending_input_usage_.input_tokens = usage.value("input_tokens", 0);
+        pending_input_usage_.cache_read_tokens = usage.value("cache_read_input_tokens", 0);
+        pending_input_usage_.cache_write_tokens = usage.value("cache_creation_input_tokens", 0);
+        spdlog::debug("[Anthropic] message_start usage: input={}, cache_read={}, cache_write={}", pending_input_usage_.input_tokens,
+                      pending_input_usage_.cache_read_tokens, pending_input_usage_.cache_write_tokens);
       }
     } else if (type == "error") {
       StreamError error;

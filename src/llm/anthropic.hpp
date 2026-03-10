@@ -41,6 +41,9 @@ class AnthropicProvider : public Provider {
     std::string args_json;
   };
   std::map<int, ToolCallInfo> tool_calls_;
+
+  // Input token usage received from message_start event (before message_delta arrives)
+  TokenUsage pending_input_usage_;
 };
 
 }  // namespace agent::llm
